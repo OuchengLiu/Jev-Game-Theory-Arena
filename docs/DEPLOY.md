@@ -24,7 +24,6 @@ Requires Node.js 18 or later.
 ```bash
 cd worker
 npx wrangler login                          # or: export CLOUDFLARE_API_TOKEN=... ("Edit Cloudflare Workers" template)
-npx wrangler kv namespace create USAGE      # paste the printed id into wrangler.toml and uncomment the [[kv_namespaces]] block
 npx wrangler secret put TYPESAFE_API_KEY    # paste your key from https://console.typesafe.ai/keys
 npx wrangler deploy
 ```
@@ -39,12 +38,13 @@ Then:
 
 - **Only fixed questions.** The proxy accepts only `{ game, mode, payload }`. Each payload is validated against a strict per-game schema (enums, bounded numbers and lists, no free text), and the Jev prompt is built on the server from `shared/prompts.js`. Nobody can use your key to ask Jev their own questions.
 - **Origin allowlist.** Browsers on other websites can't call it. Scripts can fake the `Origin` header, which is why the limits below exist.
-- **Per-IP rate limit.** 40 requests per minute by default (`[[ratelimits]]` in `wrangler.toml`).
-- **Daily budget.** Once about `DAILY_LIMIT` calls have been made in a UTC day, the proxy stops calling Jev. The counter is sampled so it stays within KV's free write quota, which makes it approximate.
+- **Burst limits per visitor.** 8 moves per 10 seconds and 30 per minute (`[[ratelimits]]` in `wrangler.toml`).
+- **Daily quotas.** Each visitor gets `IP_DAILY_LIMIT` Jev moves per UTC day (default 600) and the whole site gets `DAILY_LIMIT` (default 20,000). Counts are exact: they're kept in a Durable Object (`Guard`, SQLite storage, available on the free plan). Visitors are identified by a salted hash of their IP, never the raw address.
+- **Misuse block.** Normal play never sends invalid requests, so a visitor who sends `MAX_INVALID` (default 20) in a day is blocked for `BLOCK_HOURS` (default 24).
 - **Optional human check.** Set `turnstileSiteKey` in `js/config.js`, plus the Worker secrets `TURNSTILE_SECRET` and `SESSION_SECRET` (any long random string). After one Cloudflare Turnstile check the player gets a signed 30-minute session.
 - **Minimal responses.** The proxy returns only `model` and `answers`.
 
-If the proxy refuses or fails, the site switches to the practice bot for that move and tells the player.
+Every refusal returns `{ error, retryAfter }`. The site shows a matching notice with a countdown ("too fast", "today's moves used up", "paused", "Jev busy"), lets the practice bot play until it ends, and offers a one-click switch to Practice mode. Players can't use their own API keys.
 
 **Recommended:** if the TypeSafe console offers usage limits or alerts, set them too. If a key ever leaks, revoke it there and run `npx wrangler secret put TYPESAFE_API_KEY` again. No website change is needed.
 
@@ -76,7 +76,6 @@ At $0.042 per million input tokens and roughly 400–900 tokens per move, 20,000
 ```bash
 cd worker
 npx wrangler login                          # 或者：export CLOUDFLARE_API_TOKEN=...（选 "Edit Cloudflare Workers" 模板）
-npx wrangler kv namespace create USAGE      # 把输出的 id 填进 wrangler.toml，并取消 [[kv_namespaces]] 那几行的注释
 npx wrangler secret put TYPESAFE_API_KEY    # 粘贴在 https://console.typesafe.ai/keys 申请的 Key
 npx wrangler deploy
 ```
@@ -91,12 +90,13 @@ npx wrangler deploy
 
 - **只接受固定的问题。** 只接受 `{ game, mode, payload }`，按各游戏的严格 schema 校验（枚举、有界的数字和列表、不允许自由文本），提示词在服务端根据 `shared/prompts.js` 拼好。别人无法用你的 Key 问 Jev 任意问题。
 - **来源白名单。** 其他网站的浏览器调用不了。脚本可以伪造 `Origin` 请求头，所以还有下面几层限制。
-- **按 IP 限流。** 默认每分钟 40 次（见 `wrangler.toml` 的 `[[ratelimits]]`）。
-- **每日预算。** 一个 UTC 日内调用达到约 `DAILY_LIMIT` 次后，代理停止调用 Jev。为了不超过 KV 的免费写入额度，计数采用抽样方式，所以是近似值。
+- **短时限流。** 每位访客每 10 秒最多 8 步、每分钟最多 30 步（见 `wrangler.toml` 的 `[[ratelimits]]`）。
+- **每日额度。** 每位访客每个 UTC 日最多 `IP_DAILY_LIMIT` 步（默认 600），全站最多 `DAILY_LIMIT` 步（默认 20000）。计数是精确的，存放在一个 Durable Object（`Guard`，使用 SQLite 存储，免费版可用）里。访客用加盐后的 IP 哈希识别，不保存原始 IP。
+- **滥用封禁。** 正常游戏永远不会发出非法请求，所以一天内发出 `MAX_INVALID` 次（默认 20 次）非法请求的访客，会被封禁 `BLOCK_HOURS` 小时（默认 24 小时）。
 - **可选人机验证。** 在 `js/config.js` 里填 `turnstileSiteKey`，并设置 Worker secret `TURNSTILE_SECRET` 和 `SESSION_SECRET`（任意一串足够长的随机字符）。玩家通过一次 Cloudflare Turnstile 验证后，会拿到一个 30 分钟有效的签名会话。
 - **只返回必要数据。** 响应里只有 `model` 和 `answers`。
 
-如果代理拒绝请求或调用失败，这一步会切换到练习机器人出招，并告知玩家。
+每次拒绝都会返回 `{ error, retryAfter }`。网站会显示对应的提示和倒计时（“出招太快”“今天的次数用完了”“暂停使用”“Jev 正忙”），在此期间由练习机器人出招，并提供一键切换到练习模式的按钮。玩家不能使用自己的 API Key。
 
 **建议：** 如果 TypeSafe 控制台支持用量上限或提醒，也一并设置。Key 一旦泄露，就在控制台作废它，再运行一次 `npx wrangler secret put TYPESAFE_API_KEY`，网站不用做任何改动。
 

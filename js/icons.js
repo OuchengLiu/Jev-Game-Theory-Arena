@@ -28,5 +28,6 @@ export const icons = {
   arrow: svg('<path d="M5 12h14M13 6l6 6-6 6"/>', 16),
   back: svg('<path d="M19 12H5M11 6l-6 6 6 6"/>', 16),
   shield: svg('<path d="M12 3 4.5 6v5.5c0 4.4 3.1 8.2 7.5 9.5 4.4-1.3 7.5-5.1 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/>', 16),
+  book: svg('<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20v3H6.5A2.5 2.5 0 0 1 4 20.5z"/><path d="M8.5 7.5h7M8.5 11h5"/>', 16),
   close: svg('<path d="M6 6l12 12M18 6 6 18"/>', 18),
 };

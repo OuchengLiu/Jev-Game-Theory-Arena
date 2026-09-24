@@ -1,16 +1,24 @@
 import { CONFIG } from './config.js';
 
 const KEY = 'jev-game-theory-settings';
+const MODES = ['hinted', 'raw', 'practice'];
 const listeners = new Set();
 
+// First visit: follow the browser language (Chinese → 中文, anything else → English).
+const browserLang = () => {
+  const langs = navigator.languages?.length ? navigator.languages : [navigator.language || 'en'];
+  return String(langs[0]).toLowerCase().startsWith('zh') ? 'zh' : 'en';
+};
+
 const defaults = {
-  lang: (navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh' : 'en',
+  lang: browserLang(),
   theme: 'auto',            // auto | light | dark
-  jevMode: 'hinted',        // hinted: code computes odds for Jev | raw: Jev sees only the raw record
+  jevMode: 'hinted',        // hinted: code computes odds for Jev | raw: Jev sees only the raw record | practice: no Jev
 };
 
 let state = { ...defaults, ...safeParse(storageGet(KEY)) };
-if (!['hinted', 'raw'].includes(state.jevMode)) state.jevMode = 'hinted';
+if (!MODES.includes(state.jevMode)) state.jevMode = 'hinted';
+if (!['zh', 'en'].includes(state.lang)) state.lang = defaults.lang;
 
 function storageGet(k) {
   try { return localStorage.getItem(k); } catch { return null; }
@@ -31,13 +39,8 @@ export const settings = {
   onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
 };
 
-// A personal API key (bring-your-own-key) is kept in sessionStorage only:
-// it disappears when the tab closes and is never sent anywhere except TypeSafe.
-export function getByokKey() {
-  try { return sessionStorage.getItem('jev-byok') || ''; } catch { return ''; }
-}
-export function setByokKey(k) {
-  if (k) sessionStorage.setItem('jev-byok', k.trim());
-  else sessionStorage.removeItem('jev-byok');
-}
-export const jevAvailable = () => Boolean(CONFIG.proxyUrl || getByokKey());
+/** Is a Jev proxy configured for this deployment? */
+export const jevAvailable = () => Boolean(CONFIG.proxyUrl);
+
+/** The mode actually in effect: practice when no proxy is configured. */
+export const effectiveMode = () => (jevAvailable() ? state.jevMode : 'practice');

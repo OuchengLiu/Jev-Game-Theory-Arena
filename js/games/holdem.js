@@ -1,16 +1,29 @@
-// Heads-up Limit Texas Hold'em vs Jev. Blinds 1/2, fixed bets 2/2/4/4, cap of 4 bets per street,
-// 200-chip stacks, play continues hand after hand until one side is broke.
+// Heads-up No-Limit Texas Hold'em vs Jev. Blinds 1/2, 200-chip stacks (100 big blinds), any bet
+// from the big blind up to all-in, play continues hand after hand until one side is broke.
+// Jev picks among discrete sizes (see holdem-core.js sizeOptions); the human gets quick-size chips,
+// a slider and an All-in button.
 // Pure rules/evaluator/equity live in ./holdem-core.js (Node-testable); this file is UI + flow.
 // Module contract: see js/games/pd.js.
 
 import { choiceAnswer, noulAnswer } from '../engine.js';
 import {
-  START_STACK, STREETS, newHand, legalActions, amountFor, applyAction, toCall, potSize,
-  recordStats, emptyStats, makePayload, makeRawPayload, summarizeHand, bestFive, botPolicy, rankOf, suitOf,
+  START_STACK, STREETS, newHand, legalActions, amountFor, applyAction, toCall, potSize, raiseRange, jevOptions,
+  potFractionTo, clampTo, recordStats, emptyStats, makePayload, makeRawPayload, summarizeHand, bestFive, botPolicy,
+  rankOf, suitOf,
 } from './holdem-core.js';
 
 const HUMAN = 0, JEV = 1;
 const RECENT = 6; // finished hands remembered for Jev's raw payload
+// Human quick-size chips: fraction of the pot (a raise adds this fraction of the pot after calling).
+const QUICK = [['q33', 1 / 3], ['q50', 1 / 2], ['q75', 3 / 4], ['q100', 1], ['q200', 2]];
+
+// All-in run-out: Jev's cards flip first, then the missing board cards one street at a time.
+function runoutPlan(from) {
+  const d = {};
+  let t = 700;
+  for (let i = from; i < 5; i++) { d[i] = t; t += i < 2 ? 140 : 900; }
+  return { d, end: d[4] + 700 };
+}
 
 // Practice bot (automatic fallback when Jev is unreachable): equity / pot-odds mixed strategy.
 function localBot(payload) {
@@ -104,15 +117,19 @@ const HAND_NAMES = {
 
 export default {
   id: 'holdem',
-  meta: { icon: '♠︎', accent: '#6366f1', minutes: 10 },
+  meta: { icon: '♠︎', accent: '#6366f1', minutes: 8 },
   strings: {
     en: {
-      title: 'Heads-up Hold’em',
-      tagline: 'Limit Texas Hold’em, one on one. Jev can’t see your cards, and you can’t see its. Bluff it, or catch it bluffing.',
-      concept: 'Bluffing & imperfect information',
-      rules: 'Limit hold’em, 200 virtual chips each, blinds 1/2. Bets are fixed: 2 before the flop and on the flop, 4 on the turn and river, at most 4 bets per street. The dealer button posts the small blind and switches every hand. Best five of seven cards wins. Play until someone is out of chips.',
-      fold: 'Fold', check: 'Check', call: 'Call', bet: 'Bet', raise: 'Raise',
-      callN: 'Call {n}', betN: 'Bet {n}', raiseN: 'Raise to {n}',
+      title: 'Heads-up No-Limit Hold’em',
+      tagline: 'No-Limit Texas Hold’em, one on one. Any bet up to all-in: size it right, bluff Jev off its hand, or catch it bluffing.',
+      concept: 'Bluffing, bet sizing & imperfect information',
+      rules: 'No-limit hold’em, 200 virtual chips each (100 big blinds), blinds 1/2. Bet any amount from the big blind up to all of your chips; a raise must be at least as big as the previous bet or raise, except that you may always go all-in. The dealer button posts the small blind, acts first before the flop and last after it, and switches every hand. When a player is all-in and called, the remaining cards are dealt out. Best five of seven cards wins. Play until someone is out of chips.',
+      fold: 'Fold', check: 'Check', call: 'Call', bet: 'Bet', raise: 'Raise', allinBtn: 'All-in',
+      callN: 'Call {n}', betN: 'Bet {n}', raiseN: 'Raise to {n}', allinN: 'All-in {n}',
+      betTo: 'Bet', raiseTo: 'Raise to', size: 'Bet size', minN: 'Min {n}', maxN: 'All-in {n}',
+      q33: '1/3', q50: '1/2', q75: '3/4', q100: 'Pot', q200: '2×', qAll: 'All-in',
+      q33t: 'One third of the pot', q50t: 'Half the pot', q75t: 'Three quarters of the pot', q100t: 'The size of the pot', q200t: 'Twice the pot',
+      runout: 'All-in: dealing the rest of the board',
       preflop: 'Preflop', flop: 'Flop', turn: 'Turn', river: 'River', showdown: 'Showdown',
       pot: 'Pot', hand: 'Hand {n}', dealer: 'Dealer button',
       yourTurn: 'Your move', toCall: '{n} to call', jevTurn: 'Jev is thinking',
@@ -120,7 +137,7 @@ export default {
       l_sb: 'small blind {n}', l_bb: 'big blind {n}', l_check: 'checks', l_bet: 'bets {n}',
       l_call: 'calls {n}', l_raise: 'raises to {n}', l_fold: 'folds', allin: 'all-in',
       b_sb: 'Small blind {n}', b_bb: 'Big blind {n}', b_check: 'Check', b_bet: 'Bet {n}',
-      b_call: 'Call {n}', b_raise: 'Raise to {n}', b_fold: 'Fold',
+      b_call: 'Call {n}', b_raise: 'Raise to {n}', b_fold: 'Fold', b_allin: 'All-in {n}',
       winYou: 'You win {n}', winJev: 'Jev wins {n}',
       winYouHand: 'You win {n} with {hand}', winJevHand: 'Jev wins {n} with {hand}',
       split: 'Split pot: both have {hand}',
@@ -132,7 +149,7 @@ export default {
       oppBluff: 'You are bluffing',
       jevAhead: 'Jev is ahead',
       virtual: 'Virtual chips · no real money',
-      stakes: 'Blinds 1/2 · Limit 2/4',
+      stakes: 'Blinds 1/2 · No-Limit',
       chips: '{n} virtual chips',
       net: 'Net {n}',
       mono: 'Y',
@@ -141,12 +158,16 @@ export default {
       ...HAND_NAMES.en,
     },
     zh: {
-      title: '单挑德州扑克',
-      tagline: '一对一的限注德州扑克。Jev 看不到你的牌，你也看不到它的。去诈唬它，或者抓住它的诈唬。',
-      concept: '诈唬与不完全信息',
-      rules: '限注德州扑克，双方各 200 虚拟筹码，盲注 1/2。下注额固定：翻牌前和翻牌圈每注 2，转牌圈和河牌圈每注 4，每轮最多 4 注。庄家位下小盲，每手轮换。七张牌中取最好的五张比大小。打到一方筹码输光为止。',
-      fold: '弃牌', check: '过牌', call: '跟注', bet: '下注', raise: '加注',
-      callN: '跟注 {n}', betN: '下注 {n}', raiseN: '加注到 {n}',
+      title: '单挑无限注德州扑克',
+      tagline: '一对一的无限注德州扑克。下注从一个大盲到全下随你定：掌控下注尺度，诈唬 Jev 弃牌，或者抓住它的诈唬。',
+      concept: '诈唬、下注尺度与不完全信息',
+      rules: '无限注德州扑克，双方各 200 虚拟筹码（100 个大盲），盲注 1/2。下注额最少一个大盲，最多可以全下；加注的幅度至少等于上一次下注或加注的幅度，但随时都可以全下。庄家位下小盲，翻牌前先行动、翻牌后最后行动，每手轮换。一方全下并被跟注后，直接发完剩余的公共牌。七张牌中取最好的五张比大小。打到一方筹码输光为止。',
+      fold: '弃牌', check: '过牌', call: '跟注', bet: '下注', raise: '加注', allinBtn: '全下',
+      callN: '跟注 {n}', betN: '下注 {n}', raiseN: '加注到 {n}', allinN: '全下 {n}',
+      betTo: '下注', raiseTo: '加注到', size: '下注额', minN: '最少 {n}', maxN: '全下 {n}',
+      q33: '1/3 池', q50: '1/2 池', q75: '3/4 池', q100: '底池', q200: '2 倍池', qAll: '全下',
+      q33t: '底池的三分之一', q50t: '底池的一半', q75t: '底池的四分之三', q100t: '与底池相同', q200t: '底池的两倍',
+      runout: '全下：发完剩余公共牌',
       preflop: '翻牌前', flop: '翻牌圈', turn: '转牌圈', river: '河牌圈', showdown: '摊牌',
       pot: '底池', hand: '第 {n} 手', dealer: '庄家按钮',
       yourTurn: '轮到你了', toCall: '需跟注 {n}', jevTurn: 'Jev 思考中',
@@ -154,7 +175,7 @@ export default {
       l_sb: '下小盲 {n}', l_bb: '下大盲 {n}', l_check: '过牌', l_bet: '下注 {n}',
       l_call: '跟注 {n}', l_raise: '加注到 {n}', l_fold: '弃牌', allin: '全下',
       b_sb: '小盲 {n}', b_bb: '大盲 {n}', b_check: '过牌', b_bet: '下注 {n}',
-      b_call: '跟注 {n}', b_raise: '加注到 {n}', b_fold: '弃牌',
+      b_call: '跟注 {n}', b_raise: '加注到 {n}', b_fold: '弃牌', b_allin: '全下 {n}',
       winYou: '你赢得 {n}', winJev: 'Jev 赢得 {n}',
       winYouHand: '你以{hand}赢得 {n}', winJevHand: 'Jev 以{hand}赢得 {n}',
       split: '平分底池：双方都是{hand}',
@@ -166,7 +187,7 @@ export default {
       oppBluff: '你在诈唬',
       jevAhead: 'Jev 领先',
       virtual: '虚拟筹码 · 不涉及金钱',
-      stakes: '盲注 1/2 · 限注 2/4',
+      stakes: '盲注 1/2 · 无限注',
       chips: '{n} 虚拟筹码',
       net: '净胜 {n}',
       mono: '你',
@@ -185,6 +206,9 @@ export default {
     let gen = 0; // bumps on new game so stale async work is ignored
     const timers = new Set();
     let stacks, button, hand, stats, handNo, busy, over, past, results;
+    let sel = 0, selKey = ''; // the human's chosen bet/raise total, remembered per decision
+    let revealAt = 0, plan = null; // all-in run-out: results stay hidden until revealAt
+    const revealing = () => hand.done && performance.now() < revealAt;
 
     const wait = (ms) => new Promise((resolve) => {
       const id = setTimeout(() => { timers.delete(id); resolve(); }, ms);
@@ -227,6 +251,7 @@ export default {
       born.clear();
       hand = newHand(stacks, button);
       busy = false;
+      revealAt = 0; plan = null;
       step();
     }
 
@@ -247,6 +272,12 @@ export default {
           if (past.length > RECENT) past.shift();
           results.push({ n: handNo, winner: hand.result.winner, pot: hand.result.pot, showdown: hand.result.showdown });
           if (results.length > RECENT) results.shift();
+          if (hand.runoutFrom != null && !reduced) {
+            plan = runoutPlan(hand.runoutFrom);
+            revealAt = performance.now() + plan.end;
+            const g = gen;
+            wait(plan.end + 30).then(() => { if (alive && g === gen) render(); });
+          }
         }
         busy = false;
         render();
@@ -263,12 +294,26 @@ export default {
     }
 
     // `turn` is the move number the button was rendered for: a stale second click is ignored.
-    function act(a, turn) {
+    function act(a, turn, to = 0) {
       if (!alive || busy || hand.done || hand.toAct !== HUMAN || turn !== hand.history.length) return;
       if (!legalActions(hand).includes(a)) return;
+      if (a === 'bet' || a === 'raise') {
+        const r = raiseRange(hand);
+        if (!r || !Number.isInteger(to) || to < r.min || to > r.max) return;
+      }
       recordStats(stats, hand, a);
-      applyAction(hand, a);
+      applyAction(hand, a, to);
       step();
+    }
+
+    // Label for one of Jev's option ids (fold / check / call / size ids).
+    function optLabel(o, callN) {
+      if (o.act === 'call') return T('callN', { n: callN });
+      if (o.act === 'bet' || o.act === 'raise') {
+        if (o.id === 'allin') return T('allinN', { n: o.to });
+        return T(o.act === 'bet' ? 'betN' : 'raiseN', { n: o.to });
+      }
+      return T(o.act);
     }
 
     async function jevTurn() {
@@ -279,7 +324,9 @@ export default {
       if (!alive || g !== gen) return;
       const cur = hand;
       const street = cur.street;
-      const legal = legalActions(cur);
+      const opts = jevOptions(cur);
+      const ids = opts.map((o) => o.id);
+      const callN = amountFor(cur, 'call');
       const build = (mode) => (mode === 'raw' ? makeRawPayload(cur, JEV, past, handNo) : makePayload(cur, JEV, stats));
       let res;
       try {
@@ -292,18 +339,19 @@ export default {
       const spent = performance.now() - t0;
       if (spent < 800) await wait(800 - spent); // let the deal animation breathe
       if (!alive || g !== gen) return;
-      const a = ctx.pickAction(res.answers?.action, legal);
+      const id = ctx.pickAction(res.answers?.action, ids);
+      const o = opts.find((x) => x.id === id) || opts[0];
       panel.show(res, {
-        labels: () => Object.fromEntries(legal.map((k) => [k, T(k)])),
-        picked: a,
+        labels: () => Object.fromEntries(opts.map((x) => [x.id, optLabel(x, callN)])),
+        picked: o.id,
         title: () => T('q', { street: T(STREETS[street]) }),
         extras: () => [
           { label: T('oppBluff'), value: res.answers?.opp_bluffing?.noul },
           { label: T('jevAhead'), value: res.answers?.ahead?.noul },
         ],
       });
-      recordStats(stats, cur, a);
-      applyAction(cur, a);
+      recordStats(stats, cur, o.act);
+      applyAction(cur, o.act, o.to);
       step();
     }
 
@@ -360,9 +408,17 @@ export default {
       return null;
     }
 
+    // Chips behind as shown: while an all-in run-out is still being dealt, the pre-settlement stacks.
+    function shownStack(p) {
+      if (!revealing()) return hand.stacks[p];
+      const r = hand.result;
+      return hand.stacks[p] - r.won[p] - r.returned[p];
+    }
+    const RO = () => (plan && hand.done ? plan.end : 0); // extra delay for showdown effects
+
     function winningCards() {
       const r = hand.result;
-      if (!hand.done || !r.showdown) return null;
+      if (!hand.done || !r.showdown || revealing()) return null;
       const set = new Set();
       for (const p of r.winner === -1 ? [HUMAN, JEV] : [r.winner]) {
         for (const c of bestFive([...hand.holes[p], ...hand.board])) set.add(c);
@@ -391,7 +447,7 @@ export default {
 
       let bubble = null;
       if (showdown) {
-        const hn = anim(`hn${p}`, 'hd-a-pop', 420, 600);
+        const hn = anim(`hn${p}`, 'hd-a-pop', 420, 600 + RO());
         bubble = h('div.hd-bubble.hd-hn', animAttrs(hn, winner ? 'hd-best' : ''), T(`hn_${r.names[p]}`));
       } else if (active && p === JEV && busy) {
         bubble = h('div.hd-bubble.hd-think', { 'aria-label': T('jevTurn') }, h('i'), h('i'), h('i'));
@@ -400,15 +456,18 @@ export default {
         if (la && (!hand.done || la.e.act === 'fold')) {
           const { e, i } = la;
           const a = anim(`b${i}`, 'hd-a-pop', 380);
-          bubble = h('div.hd-bubble', animAttrs(a, `hd-b-${e.act}`),
-            T(`b_${e.act}`, { n: e.amount }),
-            e.allin ? h('span.hd-b-allin', T('allin')) : null,
+          const shove = e.allin && (e.act === 'bet' || e.act === 'raise' || e.act === 'call');
+          bubble = h('div.hd-bubble', animAttrs(a, shove ? 'hd-b-shove' : `hd-b-${e.act}`),
+            shove ? T('b_allin', { n: e.amount }) : T(`b_${e.act}`, { n: e.amount }),
+            e.allin && !shove ? h('span.hd-b-allin', T('allin')) : null,
           );
         }
       }
 
-      const stack = hand.stacks[p];
-      return h(`div.hd-seat.${top ? 'hd-seat-top' : 'hd-seat-bottom'}`, { class: `${active ? 'hd-on' : ''}${winner && hand.done ? ' hd-won' : ''}` },
+      const stack = shownStack(p);
+      const allin = stack === 0 && (!hand.done || revealing());
+      const won = winner && hand.done && !revealing();
+      return h(`div.hd-seat.${top ? 'hd-seat-top' : 'hd-seat-bottom'}`, { class: `${active ? 'hd-on' : ''}${won ? ' hd-won' : ''}${allin ? ' hd-is-allin' : ''}` },
         h('div.hd-hole', holes),
         h('div.hd-plate-wrap',
           hand.button === p ? h('span.hd-puck', { title: T('dealer'), 'aria-label': T('dealer') }, 'D') : null,
@@ -416,7 +475,9 @@ export default {
             h('span.hd-ava', { class: p === JEV ? 'hd-ava-jev' : 'hd-ava-you' }, p === JEV ? 'J' : T('mono')),
             h('span.hd-pinfo',
               h('b.hd-pname', who(p)),
-              h('span.hd-pstack', { title: T('chips', { n: stack }) }, h('i.hd-coin'), stack),
+              allin
+                ? h('span.hd-pstack.hd-pstack-allin', h('span.hd-plate-allin', T('allinBtn')))
+                : h('span.hd-pstack', { title: T('chips', { n: stack }) }, h('i.hd-coin'), stack),
             ),
           ),
           bubble,
@@ -436,7 +497,7 @@ export default {
       const slots = Array.from({ length: 5 }, (_, i) => {
         const c = hand.board[i];
         if (c == null) return h('span.hd-card.hd-slot');
-        const delay = (i < 3 ? i : 0) * 140 + 120;
+        const delay = plan && i >= hand.runoutFrom ? plan.d[i] : (i < 3 ? i : 0) * 140 + 120;
         const a = anim(`board${i}`, 'hd-a-board', 420, delay);
         const flip = anim(`bflip${i}`, 'hd-a-flip', 560, delay + 180);
         return card(c, { a, flip, cls: win ? (win.has(c) ? 'hd-win' : 'hd-dim') : '' });
@@ -445,10 +506,11 @@ export default {
       let top;
       if (hand.done) {
         const dur = 900;
-        const potA = anim('potwin', r.winner === JEV ? 'hd-a-to-top' : r.winner === HUMAN ? 'hd-a-to-bottom' : 'hd-a-fade', dur, r.showdown ? 900 : 250);
-        const banner = anim('banner', 'hd-a-banner', 500, r.showdown ? 1100 : 350);
+        const potDelay = (r.showdown ? 900 : 250) + RO();
+        const potA = anim('potwin', r.winner === JEV ? 'hd-a-to-top' : r.winner === HUMAN ? 'hd-a-to-bottom' : 'hd-a-fade', dur, potDelay);
+        const banner = anim('banner', 'hd-a-banner', 500, (r.showdown ? 1100 : 350) + RO());
         top = h('div.hd-potrow',
-          !settled('potwin', dur + (r.showdown ? 900 : 250)) ? chips(collected, 'hd-pot', potA, false) : null,
+          !settled('potwin', dur + potDelay) ? chips(collected, 'hd-pot', potA, false) : null,
           h('div.hd-banner', animAttrs(banner, r.winner === HUMAN ? 'hd-good' : r.winner === JEV ? 'hd-bad' : ''),
             h('span.hd-banner-k', r.showdown ? T('showdown') : T(r.winner === HUMAN ? 'byFoldYou' : 'byFoldJev')),
             h('b', resultText()),
@@ -471,7 +533,10 @@ export default {
     }
 
     function hud() {
-      const net = (hand.done ? hand.stacks[HUMAN] : hand.stacks[HUMAN] + hand.total[HUMAN]) - START_STACK;
+      const r = hand.result;
+      const now = !hand.done ? hand.stacks[HUMAN] + hand.total[HUMAN]
+        : revealing() ? hand.stacks[HUMAN] - r.won[HUMAN] + r.pot / 2 : hand.stacks[HUMAN];
+      const net = now - START_STACK;
       const cur = hand.done && hand.result.showdown ? 4 : hand.street;
       const names = [...STREETS.map((s) => T(s)), T('showdown')];
       return h('div.hd-hud',
@@ -483,6 +548,12 @@ export default {
     }
 
     function controls() {
+      if (revealing()) {
+        return h('div.hd-bar',
+          h('p.hd-say.hd-wait', T('runout'), h('span.hd-dots', h('i'), h('i'), h('i'))),
+          h('div.hd-btns', h('button.hd-act.hd-ghost', { type: 'button', disabled: true, 'aria-hidden': 'true', tabindex: '-1' }, T('nextHand'))),
+        );
+      }
       if (over) {
         const won = stacks[HUMAN] > 0;
         return h('div.hd-bar.hd-bar-over',
@@ -506,20 +577,75 @@ export default {
       const legal = legalActions(hand);
       const tc = toCall(hand);
       const turn = hand.history.length;
-      const label = (a) => {
-        if (a === 'call') return [T('call'), amountFor(hand, a)];
-        if (a === 'bet') return [T('bet'), amountFor(hand, a)];
-        if (a === 'raise') return [T('raiseN', { n: '' }).trim(), hand.contrib[HUMAN] + amountFor(hand, a)];
-        return [T(a), null];
-      };
-      const cls = { fold: 'hd-act-fold', check: 'hd-act-plain', call: 'hd-act-plain', bet: 'hd-act-gold', raise: 'hd-act-gold' };
+      const r = raiseRange(hand);
+      const btns = [];
+      if (legal.includes('fold')) {
+        btns.push(h('button.hd-act.hd-act-fold', { type: 'button', disabled: busy, onclick: () => act('fold', turn) }, h('span', T('fold'))));
+      }
+      if (legal.includes('check')) {
+        btns.push(h('button.hd-act.hd-act-plain', { type: 'button', disabled: busy, onclick: () => act('check', turn) }, h('span', T('check'))));
+      }
+      if (legal.includes('call')) {
+        const n = amountFor(hand, 'call');
+        const all = n === hand.stacks[HUMAN];
+        btns.push(h('button.hd-act.hd-act-plain', { type: 'button', disabled: busy, onclick: () => act('call', turn) },
+          h('span', all ? T('allinBtn') : T('call')), h('b.hd-act-n', n)));
+      }
+      let sizer = null;
+      if (r) {
+        const key = `${handNo}:${turn}`;
+        if (selKey !== key) { selKey = key; sel = clampTo(r, potFractionTo(hand, 3 / 4)); }
+        const aggLabel = () => (sel >= r.max ? T('allinBtn') : T(r.kind === 'bet' ? 'betTo' : 'raiseTo'));
+        // (texts are updated in place: replacing the children mid-click would swallow the click)
+        const aggK = h('span', aggLabel()), aggN = h('b.hd-act-n', sel);
+        const aggBtn = h('button.hd-act.hd-act-gold.hd-act-agg', { type: 'button', disabled: busy, onclick: () => act(r.kind, turn, sel) }, aggK, aggN);
+        const allBtn = h('button.hd-act.hd-act-allin', { type: 'button', disabled: busy, onclick: () => act(r.kind, turn, r.max) },
+          h('span', T('allinBtn')), h('b.hd-act-n', r.max));
+        if (r.min < r.max) {
+          const quick = [...QUICK.map(([k, f]) => ({ k, to: clampTo(r, potFractionTo(hand, f)), title: T(`${k}t`) })), { k: 'qAll', to: r.max, title: T('maxN', { n: r.max }) }];
+          let slider, num;
+          const chipsEls = quick.map((q) => h('button.hd-q', { type: 'button', title: `${q.title} · ${q.to}`, 'aria-label': `${T(q.k)} (${q.to})`, disabled: busy, onclick: () => setSel(q.to) }, T(q.k)));
+          const sync = (from) => {
+            if (slider && from !== 'slider') slider.value = String(sel);
+            if (num && from !== 'num') num.value = String(sel);
+            aggK.textContent = aggLabel();
+            aggN.textContent = String(sel);
+            aggBtn.classList.toggle('hd-act-shove', sel >= r.max);
+            chipsEls.forEach((el, i) => el.classList.toggle('hd-q-on', quick[i].to === sel));
+            if (slider) slider.style.setProperty('--fill', `${((sel - r.min) / (r.max - r.min)) * 100}%`);
+          };
+          const setSel = (v, from) => {
+            if (!Number.isFinite(v)) return;
+            sel = Math.min(r.max, Math.max(r.min, Math.round(v)));
+            sync(from);
+          };
+          slider = h('input.hd-range', {
+            type: 'range', min: r.min, max: r.max, step: 1, value: sel, disabled: busy, 'aria-label': T('size'),
+            oninput: (ev) => setSel(Number(ev.target.value), 'slider'),
+          });
+          num = h('input.hd-num', {
+            type: 'number', min: r.min, max: r.max, step: 1, value: sel, inputmode: 'numeric', disabled: busy, 'aria-label': T('size'),
+            oninput: (ev) => { const v = Number(ev.target.value); if (Number.isInteger(v) && v >= r.min && v <= r.max) setSel(v, 'num'); },
+            onchange: (ev) => setSel(Number(ev.target.value) || r.min),
+            onkeydown: (ev) => { if (ev.key === 'Enter') { setSel(Number(ev.target.value) || r.min); act(r.kind, turn, sel); } },
+          });
+          sizer = h('div.hd-sizer',
+            h('div.hd-quick', chipsEls),
+            h('div.hd-slide',
+              h('span.hd-lim', T('minN', { n: r.min })),
+              slider,
+              h('label.hd-numwrap', h('span.hd-numk', T(r.kind === 'bet' ? 'betTo' : 'raiseTo')), num),
+            ),
+          );
+          sync();
+          btns.push(aggBtn);
+        }
+        btns.push(allBtn);
+      }
       return h('div.hd-bar',
         h('p.hd-say', T('yourTurn'), tc > 0 ? h('span.hd-tocall', T('toCall', { n: Math.min(tc, hand.stacks[HUMAN]) })) : null),
-        h('div.hd-btns', legal.map((a) => {
-          const [k, n] = label(a);
-          return h(`button.hd-act.${cls[a]}`, { type: 'button', disabled: busy, onclick: () => act(a, turn) },
-            h('span', k), n != null ? h('b.hd-act-n', n) : null);
-        })),
+        sizer,
+        h('div.hd-btns', { class: btns.length > 3 ? 'hd-btns-4' : '' }, btns),
       );
     }
 
@@ -533,10 +659,11 @@ export default {
     }
 
     function recentList() {
-      if (!results.length) return null;
+      const shown = revealing() ? results.slice(0, -1) : results;
+      if (!shown.length) return null;
       return h('div.hd-recent',
         h('div.hd-log-title', T('recent')),
-        h('ol', results.slice().reverse().map((x) => h('li', { class: x.winner === HUMAN ? 'hd-good' : x.winner === JEV ? 'hd-bad' : '' },
+        h('ol', shown.slice().reverse().map((x) => h('li', { class: x.winner === HUMAN ? 'hd-good' : x.winner === JEV ? 'hd-bad' : '' },
           h('span.hd-lstreet', `#${x.n}`),
           h('b', x.winner === -1 ? '=' : who(x.winner)),
           x.winner === -1 ? ` ${x.pot / 2}` : ` +${x.pot / 2}`,

@@ -1,5 +1,5 @@
 import { t } from './i18n.js';
-import { settings, jevAvailable } from './settings.js';
+import { effectiveMode } from './settings.js';
 
 /** Minimal hyperscript: h('div.card#x', {onclick}, child, ...) */
 export function h(sel, attrs, ...children) {
@@ -53,8 +53,8 @@ export class ThinkPanel {
   }
 
   header(result) {
-    const isLocal = result ? result.source === 'local' : !jevAvailable();
-    const mode = result?.mode || settings.get('jevMode');
+    const isLocal = result ? result.source === 'local' : effectiveMode() === 'practice';
+    const mode = result?.mode || effectiveMode();
     return h('div.think-head',
       h('div.think-title', h('span.pulse', { class: isLocal ? 'local' : '' }), t(isLocal ? 'think.title.local' : 'think.title'),
         !isLocal ? h('span.mode-chip', t(`mode.${mode}`)) : null),

@@ -1,15 +1,15 @@
-// The decision engine: asks Jev (through the proxy, or directly with a personal key)
-// and falls back to each game's built-in bot when Jev is unavailable.
+// The decision engine: asks Jev through the Worker proxy, and lets each game's practice
+// bot play instead when the player chose Practice mode or Jev is limited / unreachable.
 //
 // Both paths return the same shape as the TypeSafe API:
 //   { answers: { <id>: {type:'choice', choice, probabilities, confidence} | {type:'noul', noul} },
-//     source: 'jev' | 'local', model, ms, error? }
+//     source: 'jev' | 'local', mode, model, ms, error? }
+//
+// When the proxy refuses (quota, burst, block, outage) we remember a cooldown and skip the
+// network until it ends, so a limited player gets instant practice-bot moves plus a notice.
 
-import { buildJevRequest } from '../shared/prompts.js';
 import { CONFIG } from './config.js';
-import { settings, getByokKey, jevAvailable } from './settings.js';
-
-const TYPESAFE_URL = 'https://api.typesafe.ai/v1/systemone';
+import { settings, effectiveMode } from './settings.js';
 
 async function postJson(url, body, headers = {}) {
   const ctrl = new AbortController();
@@ -25,6 +25,8 @@ async function postJson(url, body, headers = {}) {
     if (!res.ok) {
       const err = new Error(data.error || `HTTP ${res.status}`);
       err.status = res.status;
+      err.code = data.error;
+      err.retryAfter = Number(data.retryAfter || res.headers.get('Retry-After')) || 0;
       throw err;
     }
     return data;
@@ -34,9 +36,6 @@ async function postJson(url, body, headers = {}) {
 }
 
 async function askJev(game, payload, mode) {
-  const key = getByokKey();
-  if (key) return postJson(TYPESAFE_URL, buildJevRequest(game, payload, mode), { Authorization: `Bearer ${key}` });
-  if (!CONFIG.proxyUrl) throw new Error('no-endpoint');
   const body = { game, mode, payload };
   if (!CONFIG.turnstileSiteKey) return postJson(CONFIG.proxyUrl, body);
   try {
@@ -46,6 +45,37 @@ async function askJev(game, payload, mode) {
     session = null; // expired: redo the human check once
     return postJson(CONFIG.proxyUrl, body, { 'X-Session': await getSession() });
   }
+}
+
+// ---------- limits & status ----------
+// Codes shown to players (see i18n 'limit.*'): burst · ip_daily · global_daily · blocked ·
+// busy (upstream overloaded or not configured) · offline (network / timeout / server error)
+const DEFAULT_WAIT = { burst: 20, ip_daily: 3600, global_daily: 3600, blocked: 86400, busy: 120, offline: 30 };
+let cooldown = null; // { code, until }
+const statusListeners = new Set();
+
+function classify(e) {
+  switch (e.code) {
+    case 'burst': case 'ip_daily': case 'global_daily': case 'blocked': return e.code;
+    case 'upstream_busy': case 'not_configured': return 'busy';
+    default: return 'offline'; // network errors, timeouts, 5xx, unexpected responses
+  }
+}
+
+function startCooldown(code, seconds) {
+  cooldown = { code, until: Date.now() + 1000 * (seconds || DEFAULT_WAIT[code]) };
+  statusListeners.forEach((fn) => fn(getJevStatus()));
+}
+
+/** Current limit, if any: { code, until } (until = ms timestamp). */
+export function getJevStatus() {
+  if (cooldown && cooldown.until <= Date.now()) cooldown = null;
+  return cooldown;
+}
+
+export function onJevStatus(fn) {
+  statusListeners.add(fn);
+  return () => statusListeners.delete(fn);
 }
 
 // ---------- optional Cloudflare Turnstile human check ----------
@@ -91,22 +121,27 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * @param {object | ((mode: 'hinted'|'raw') => object)} makePayload
  *        schema-checked game state, or a function building it for the current Jev mode
  *        ('hinted': code-computed odds as semantic buckets; 'raw': raw record only)
- * @param {(hintedPayload) => object} local  practice bot, used when Jev is unreachable
+ * @param {(hintedPayload) => object} local  practice bot (Practice mode, or when Jev is limited)
  */
 export async function decide(game, makePayload, local) {
   const t0 = performance.now();
   const build = typeof makePayload === 'function' ? makePayload : () => makePayload;
-  const mode = settings.get('jevMode');
+  const mode = effectiveMode();
   let error;
-  if (jevAvailable()) {
-    try {
-      const data = await askJev(game, build(mode), mode);
-      return { answers: data.answers, model: data.model, source: 'jev', mode, ms: Math.round(performance.now() - t0) };
-    } catch (e) {
-      error = e.status === 429 ? 'rate-limited' : 'unavailable';
-      console.warn('[jev] falling back to practice bot:', e);
+  if (mode !== 'practice') {
+    const limited = getJevStatus();
+    if (limited) error = limited.code;
+    else {
+      try {
+        const data = await askJev(game, build(mode), mode);
+        return { answers: data.answers, model: data.model, source: 'jev', mode, ms: Math.round(performance.now() - t0) };
+      } catch (e) {
+        error = classify(e);
+        startCooldown(error, e.retryAfter);
+        console.warn('[jev] practice bot stands in:', error, e);
+      }
     }
-  } else error = 'no-endpoint';
+  }
   const answers = local(build('hinted'));
   const elapsed = performance.now() - t0;
   if (elapsed < 450) await sleep(450 - elapsed); // give the bot a moment to "think"

@@ -27,7 +27,7 @@ That's exactly what a game-theory player needs. In poker, a bluff only works if 
 
 | | Game | What it teaches |
 |---|---|---|
-| ♠ | **Heads-up Hold'em**: limit Texas Hold'em, one on one | Bluffing and imperfect information |
+| ♠ | **Heads-up No-Limit Hold'em**: bet any amount, go all-in | Bluffing and imperfect information |
 | ⚅ | **Liar's Dice**: five dice under a cup; bid or call "Liar!" | Bluffing and reasoning from partial information |
 | ⚑ | **Colonel Blotto**: split 10 soldiers across 3 battlefields | Why no fixed plan is ever safe |
 | ▦ | **Prisoner's Dilemma**: ten rounds of cooperate or defect | Trust, reputation and repeated games |
@@ -39,7 +39,7 @@ That's exactly what a game-theory player needs. In poker, a bluff only works if 
 - **Hinted mode**: the game does the maths first (hand strength, odds, patterns in your play) and gives Jev a short summary. Jev decides with that help.
 - **Raw mode**: Jev sees only what happened (every move so far and the scores) and the options it has. It plays on intuition, so it's often more human and easier to exploit.
 
-Switch between them on any game page. Which Jev is harder to beat?
+There's also **Practice mode**, where a built-in algorithm plays instead of Jev, with no limits. Switch modes on any game page. Which Jev is harder to beat?
 
 ### Just a game
 
@@ -75,7 +75,7 @@ Ideas, bug reports and new games are welcome. Please open an issue or a pull req
 
 | | 游戏 | 能学到什么 |
 |---|---|---|
-| ♠ | **单挑德州扑克**：一对一限注德州 | 诈唬与不完全信息 |
+| ♠ | **单挑无限注德州**：自由下注，可以全下 | 诈唬与不完全信息 |
 | ⚅ | **吹牛骰子**：五颗骰子扣在盅里，叫点还是“开！” | 诈唬，以及根据部分信息做推断 |
 | ⚑ | **布洛托上校**：把 10 名士兵分到 3 个战场 | 为什么任何固定打法都不安全 |
 | ▦ | **囚徒困境**：十回合，合作还是背叛 | 信任、声誉与重复博弈 |
@@ -87,7 +87,7 @@ Ideas, bug reports and new games are welcome. Please open an issue or a pull req
 - **提示模式**：游戏先把数算好（牌力、概率、你的出招规律），整理成简短的提示交给 Jev，它在这些帮助下做决定。
 - **直觉模式**：Jev 只看到发生过的事（之前的每一步、双方比分）和当前可选的动作，全凭直觉判断。这样往往更像人，也更容易被你抓住破绽。
 
-每个游戏页面都可以切换。你觉得哪个 Jev 更难对付？
+另外还有**练习模式**：不连接 Jev，由内置算法陪你玩，不限次数。每个游戏页面都可以切换模式。你觉得哪个 Jev 更难对付？
 
 ### 只是游戏
 

@@ -1,7 +1,7 @@
 import { t, registerStrings } from './i18n.js';
-import { settings, jevAvailable, getByokKey, setByokKey } from './settings.js';
+import { settings, jevAvailable, effectiveMode } from './settings.js';
 import { h, ThinkPanel, segmented, toast } from './ui.js';
-import { decide, pickAction, choiceAnswer, noulAnswer, normalize } from './engine.js';
+import { decide, pickAction, choiceAnswer, noulAnswer, normalize, getJevStatus, onJevStatus } from './engine.js';
 import { gameIcon, icons } from './icons.js';
 import { CONFIG } from './config.js';
 
@@ -163,6 +163,7 @@ function aboutPage() {
       h('div.mode-cards',
         h('div.mode-card', h('b', t('mode.hinted')), h('p', t('mode.info.hinted'))),
         h('div.mode-card', h('b', t('mode.raw')), h('p', t('mode.info.raw'))),
+        h('div.mode-card', h('b', t('mode.practice')), h('p', t('mode.info.practice'))),
       ),
       h('p.muted', t('mode.info.note')),
       h('h2', t('about.games.t')),
@@ -175,27 +176,15 @@ function aboutPage() {
   );
 }
 
-// Developer page (not linked): try Jev with a personal key, kept in this tab only.
-function devPage() {
-  const input = h('input.input', { type: 'password', placeholder: 'TypeSafe API key', value: getByokKey(), autocomplete: 'off' });
-  return h('main.page.narrow',
-    h('a.back', { href: '#/' }, svgEl(icons.back), t('back')),
-    h('h1.display', 'Developer'),
-    h('p.muted', 'Local testing only. The key is stored in sessionStorage for this tab and sent only to api.typesafe.ai (requires TypeSafe to allow browser CORS).'),
-    h('div.dev-row', input,
-      h('button.btn', { type: 'button', onclick: () => { setByokKey(input.value); toast('Saved'); } }, 'Save'),
-      h('button.btn.ghost', { type: 'button', onclick: () => { setByokKey(''); input.value = ''; toast('Cleared'); } }, 'Clear')),
-    footer(),
-  );
-}
-
 // ---------------- game page ----------------
 function modeControl() {
   const wrap = h('div.control');
+  const jev = jevAvailable();
   const pop = h('div.popover', { role: 'dialog', hidden: true },
     h('div.pop-head', h('b', t('mode.info.title')), h('button.icon-btn.sm', { type: 'button', html: icons.close, onclick: () => { pop.hidden = true; } })),
     h('div.pop-item', h('span.chip', t('mode.hinted')), h('p', t('mode.info.hinted'))),
     h('div.pop-item', h('span.chip', t('mode.raw')), h('p', t('mode.info.raw'))),
+    h('div.pop-item', h('span.chip.chip-muted', t('mode.practice')), h('p', t('mode.info.practice'))),
     h('p.pop-note', t('mode.info.note')),
   );
   const info = h('button.info-btn', { type: 'button', title: t('mode.info.title'), 'aria-label': t('mode.info.title'), html: icons.info,
@@ -203,12 +192,58 @@ function modeControl() {
   const close = (e) => { if (!wrap.contains(e.target)) pop.hidden = true; };
   document.addEventListener('click', close);
   wrap.cleanup = () => document.removeEventListener('click', close);
+  const off = jev ? '' : t('mode.jev.off');
   wrap.append(
     h('span.control-label', t('jevmode.label'), info),
-    segmented([{ value: 'hinted', label: t('mode.hinted') }, { value: 'raw', label: t('mode.raw') }], settings.get('jevMode'), (v) => settings.set('jevMode', v)),
+    segmented([
+      { value: 'hinted', label: t('mode.hinted'), disabled: !jev, title: off },
+      { value: 'raw', label: t('mode.raw'), disabled: !jev, title: off },
+      { value: 'practice', label: t('mode.practice') },
+    ], effectiveMode(), (v) => settings.set('jevMode', v)),
     pop,
   );
   return wrap;
+}
+
+// Notice shown while Jev is limited (quota, too fast, blocked, outage), with a live countdown.
+function limitBanner() {
+  const el = h('div.limit', { hidden: true, role: 'status' });
+  let timer = null;
+  const fmt = (sec) => {
+    if (sec >= 3600) return t('time.hours', { n: Math.ceil(sec / 3600) });
+    if (sec >= 60) return t('time.minutes', { n: Math.ceil(sec / 60) });
+    return t('time.seconds', { n: Math.max(1, sec) });
+  };
+  const paint = () => {
+    const st = effectiveMode() === 'practice' ? null : getJevStatus();
+    if (!st) { el.hidden = true; clearInterval(timer); timer = null; return; }
+    const left = Math.ceil((st.until - Date.now()) / 1000);
+    el.hidden = false;
+    el.className = `limit limit-${st.code}`;
+    el.replaceChildren(
+      h('span.limit-dot'),
+      h('div.limit-text', h('b', t(`limit.${st.code}.t`)), h('span', t(`limit.${st.code}.b`, { time: fmt(left) }))),
+      h('button.btn.ghost.sm', { type: 'button', onclick: () => settings.set('jevMode', 'practice') }, t('limit.switch')),
+    );
+    if (!timer) timer = setInterval(paint, 1000);
+  };
+  const unsub = onJevStatus(paint);
+  el.cleanup = () => { unsub(); clearInterval(timer); };
+  paint();
+  return el;
+}
+
+// Rules: a prominent "How to play" pill. Open automatically the first time a game is visited.
+function rulesToggle(game) {
+  const key = `jev-gtl-seen-${game.id}`;
+  let seen = false;
+  try { seen = localStorage.getItem(key) === '1'; localStorage.setItem(key, '1'); } catch { /* storage blocked */ }
+  if (rulesToggle.open?.[game.id] !== undefined) seen = !rulesToggle.open[game.id];
+  const d = h('details.rules', { open: !seen },
+    // record only real clicks (setting `open` in code also fires a toggle event)
+    h('summary', { onclick: () => { (rulesToggle.open ||= {})[game.id] = !d.open; } }, svgEl(icons.book), t('rules')),
+    h('p', t(`${game.id}.rules`)));
+  return d;
 }
 
 function gamePage(game) {
@@ -217,6 +252,7 @@ function gamePage(game) {
   // Games pass conditional children (`cond ? el : null`); the native method would print "null".
   board.replaceChildren = (...kids) => Element.prototype.replaceChildren.call(board, ...kids.flat(Infinity).filter((k) => k != null && k !== false));
   const mode = modeControl();
+  const banner = limitBanner();
   const page = h('main.page.game-page', { style: { '--accent': game.meta.accent } },
     h('a.back', { href: '#/' }, svgEl(icons.back), t('back')),
     h('div.game-head',
@@ -230,14 +266,15 @@ function gamePage(game) {
       h('div.controls', mode),
     ),
     h('div.game-sub',
-      h('details.rules', h('summary', t('rules')), h('p', t(`${game.id}.rules`))),
+      rulesToggle(game),
       h('span.badge', svgEl(icons.shield), t('disclaimer.short')),
       !jevAvailable() ? h('span.badge.offline', h('span.dot-off'), t('status.offline')) : null,
     ),
+    banner,
     h('div.game-layout', board, panel.el),
     footer(),
   );
-  page.cleanup = mode.cleanup;
+  page.cleanup = () => { mode.cleanup(); banner.cleanup(); };
   const ctx = { t, h, panel, decide, pickAction, choiceAnswer, noulAnswer, normalize, toast, settings };
   const instance = game.mount(board, ctx);
   return { page, instance, panel };
@@ -265,7 +302,6 @@ function route() {
     current = { game, ...built };
     page = built.page;
   } else if (hash.startsWith('#/about')) page = aboutPage();
-  else if (hash.startsWith('#/dev')) page = devPage();
   else page = homePage();
   app.replaceChildren(header(), page);
 }

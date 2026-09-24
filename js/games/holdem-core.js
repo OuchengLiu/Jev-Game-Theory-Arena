@@ -1,4 +1,4 @@
-// Heads-up Limit Hold'em: pure game logic (no DOM, no browser globals).
+// Heads-up No-Limit Hold'em: pure game logic (no DOM, no browser globals).
 // Imported by js/games/holdem.js and unit-testable from Node.
 //
 // Cards are ints 0..51 with index = rank * 4 + suit, matching CARDS in shared/schema.js
@@ -10,14 +10,12 @@ import { CARDS } from '../../shared/schema.js';
 export const START_STACK = 200;
 export const SB = 1;
 export const BB = 2;
-export const MAX_BETS = 4; // per street, the big blind counts as the first bet preflop
 export const STREETS = ['preflop', 'flop', 'turn', 'river'];
 export const CATS = ['high_card', 'pair', 'two_pair', 'trips', 'straight', 'flush', 'full_house', 'quads', 'straight_flush'];
 
 export const rankOf = (c) => c >> 2;
 export const suitOf = (c) => c & 3;
 export const cardStr = (c) => CARDS[c];
-export const betUnit = (street) => (street >= 2 ? 4 : 2);
 
 // ---------------- hand evaluator ----------------
 
@@ -206,7 +204,17 @@ export function drawKind(hole, board) {
   return straight || 'none';
 }
 
-// ---------------- betting state machine ----------------
+// ---------------- betting state machine (No-Limit) ----------------
+//
+// Amounts: a bet/raise is given as `to` = the player's total contribution on this street after
+// the action. Rules (heads-up NL):
+//   * minimum bet = the big blind; minimum raise increment = the last full bet/raise increment
+//     on this street (at least the big blind);
+//   * the maximum is all of the player's chips (anything the opponent cannot match comes back
+//     as uncalled chips when the hand is settled);
+//   * a player may always go all-in even when it is less than a minimum raise, but such a short
+//     all-in raise does not reopen the betting for a player who has already acted
+//     (tracked by hand.raiseOk; heads-up the opponent of an all-in player can never raise anyway).
 
 export function shuffledDeck(rng = Math.random) {
   const d = Array.from({ length: 52 }, (_, i) => i);
@@ -217,20 +225,20 @@ export function shuffledDeck(rng = Math.random) {
   return d;
 }
 
-/** Start a hand. stacks: [p0, p1]; button posts the small blind. */
+/** Start a hand. stacks: [p0, p1]; button posts the small blind and acts first preflop. */
 export function newHand(stacks, button, rng = Math.random) {
   const deck = shuffledDeck(rng);
   const hand = {
     stacks: [...stacks], total: [0, 0], contrib: [0, 0], button,
     holes: [[deck.pop(), deck.pop()], [deck.pop(), deck.pop()]],
-    board: [], deck, street: 0, bets: 1, acted: [false, false],
-    toAct: button, history: [], log: [], done: false, result: null,
+    board: [], deck, street: 0, acted: [false, false], raiseOk: [true, true], lastInc: BB,
+    toAct: button, history: [], log: [], done: false, result: null, runoutFrom: null,
   };
   const bb = 1 - button;
   post(hand, button, SB); hand.log.push({ street: 0, who: button, act: 'sb', amount: hand.total[button], allin: hand.stacks[button] === 0 });
   post(hand, bb, BB); hand.log.push({ street: 0, who: bb, act: 'bb', amount: hand.total[bb], allin: hand.stacks[bb] === 0 });
   if (hand.stacks[0] === 0 || hand.stacks[1] === 0) {
-    // someone is all-in from the blind: no betting possible beyond matching
+    // someone is all-in from the blind: only the small blind may still have to call
     const short = hand.contrib[button] < hand.contrib[bb] && hand.stacks[button] > 0;
     if (!short) runOut(hand);
   }
@@ -245,25 +253,114 @@ function post(hand, p, amt) {
 
 export const toCall = (hand, p = hand.toAct) => Math.max(0, hand.contrib[1 - p] - hand.contrib[p]);
 export const potSize = (hand) => hand.total[0] + hand.total[1];
+export const minIncrement = (hand) => Math.max(BB, hand.lastInc);
 
-export function legalActions(hand) {
-  if (hand.done) return [];
-  const p = hand.toAct, o = 1 - p;
-  const tc = toCall(hand, p);
-  const canRaise = hand.bets < MAX_BETS && hand.stacks[p] > tc && hand.stacks[o] > 0;
-  if (tc > 0) return canRaise ? ['fold', 'call', 'raise'] : ['fold', 'call'];
-  const out = ['check'];
-  if (canRaise) out.push(hand.bets === 0 ? 'bet' : 'raise');
-  return out;
+/**
+ * Legal bet/raise sizes for the player to act, as totals for this street, or null.
+ * { kind: 'bet'|'raise', min, max (= all-in), eff (= the opponent's all-in; sizes >= eff are
+ *   equivalent to max), cur (= the bet being faced) }
+ */
+export function raiseRange(hand, p = hand.toAct) {
+  if (hand.done) return null;
+  const o = 1 - p;
+  if (!hand.raiseOk[p] || hand.stacks[o] === 0 || hand.stacks[p] === 0) return null;
+  const cur = hand.contrib[o];
+  const max = hand.contrib[p] + hand.stacks[p];
+  if (max <= cur) return null; // cannot even complete a call
+  const eff = Math.min(max, cur + hand.stacks[o]);
+  const min = Math.min(max, cur + minIncrement(hand));
+  return { kind: hand.street > 0 && cur === 0 ? 'bet' : 'raise', min, max, eff, cur };
 }
 
-/** Chips the player to act would add for an action. */
-export function amountFor(hand, act) {
+/** Basic legal action kinds: fold/check/call/bet/raise. */
+export function legalActions(hand) {
+  if (hand.done) return [];
+  const tc = toCall(hand);
+  const r = raiseRange(hand);
+  if (tc > 0) return r ? ['fold', 'call', 'raise'] : ['fold', 'call'];
+  return r ? ['check', r.kind] : ['check'];
+}
+
+/** Chips the player to act would add for an action (`to` = street total for bet/raise). */
+export function amountFor(hand, act, to = 0) {
   const p = hand.toAct;
-  const tc = toCall(hand, p);
-  if (act === 'call') return Math.min(tc, hand.stacks[p]);
-  if (act === 'bet' || act === 'raise') return Math.min(tc + betUnit(hand.street), hand.stacks[p]);
+  if (act === 'call') return Math.min(toCall(hand, p), hand.stacks[p]);
+  if (act === 'bet' || act === 'raise') return to - hand.contrib[p];
   return 0;
+}
+
+// ---------- discrete sizes (Jev's options; the human UI uses the same formulas for its chips) ----------
+
+/** Preflop: raise to k × the bet currently faced (the big blind when unraised). */
+export const PREFLOP_SIZES = [['r2x', 2], ['r3x', 3], ['r4x', 4]];
+/** Postflop: bet f × pot, or raise by f × (pot after calling) — the standard "pot-sized raise". */
+export const POSTFLOP_SIZES = [['b33', 1 / 3], ['b50', 1 / 2], ['b75', 3 / 4], ['b100', 1], ['b200', 2]];
+export const SIZE_IDS = [...PREFLOP_SIZES.map((x) => x[0]), ...POSTFLOP_SIZES.map((x) => x[0]), 'allin'];
+
+/** Street total for a bet/raise of `frac` × pot (after calling), not clamped. */
+export function potFractionTo(hand, frac, p = hand.toAct) {
+  const cur = hand.contrib[1 - p];
+  return cur + frac * (potSize(hand) + toCall(hand, p));
+}
+
+export const clampTo = (r, x) => Math.min(r.max, Math.max(r.min, Math.round(x)));
+
+export const SIZE_WORDS = ['small', 'medium', 'large', 'overbet', 'allin'];
+export const FRACS = ['tiny', 'third', 'half', 'three_quarters', 'pot', 'one_and_half', 'double', 'more'];
+
+/** Raise increment relative to the pot after calling. */
+function potRatio(hand, to, p) {
+  const cur = hand.contrib[1 - p];
+  return (to - cur) / Math.max(1, potSize(hand) + toCall(hand, p));
+}
+export function fracBucket(ratio) {
+  return ratio < 0.25 ? 'tiny' : ratio < 0.42 ? 'third' : ratio < 0.62 ? 'half' : ratio < 0.87 ? 'three_quarters'
+    : ratio < 1.25 ? 'pot' : ratio < 1.75 ? 'one_and_half' : ratio < 2.5 ? 'double' : 'more';
+}
+/** Semantic size of a bet/raise to `to` by player p (call before applying it). */
+export function sizeWord(hand, to, p = hand.toAct) {
+  const r = raiseRange(hand, p);
+  if (r && to >= r.eff) return 'allin';
+  if (hand.street === 0) {
+    const mult = to / Math.max(1, hand.contrib[1 - p]);
+    return mult <= 2.2 ? 'small' : mult <= 3.2 ? 'medium' : mult <= 4.5 ? 'large' : 'overbet';
+  }
+  const x = potRatio(hand, to, p);
+  return x < 0.4 ? 'small' : x < 0.8 ? 'medium' : x < 1.15 ? 'large' : 'overbet';
+}
+
+/**
+ * Jev's discrete bet/raise options: legal, distinct after clamping to [min raise, all-in].
+ * Any size that would put the opponent all-in (or more) merges into 'allin'. When two sizes clamp
+ * to the same amount the one whose nominal size is closest is kept.
+ * -> [{ id, to, add, size, frac }] in increasing order, 'allin' last.
+ */
+export function sizeOptions(hand) {
+  const r = raiseRange(hand);
+  if (!r) return [];
+  const p = hand.toAct;
+  const cands = hand.street === 0
+    ? PREFLOP_SIZES.map(([id, k]) => [id, r.cur * k])
+    : POSTFLOP_SIZES.map(([id, f]) => [id, potFractionTo(hand, f)]);
+  const byAmount = new Map();
+  for (const [id, nominal] of cands) {
+    const to = clampTo(r, nominal);
+    if (to >= r.eff) continue;
+    const prev = byAmount.get(to);
+    if (!prev || Math.abs(nominal - to) < Math.abs(prev.nominal - to)) byAmount.set(to, { id, nominal });
+  }
+  const out = [...byAmount.entries()].sort((a, b) => a[0] - b[0]).map(([to, { id }]) => ({ id, to }));
+  out.push({ id: 'allin', to: r.max });
+  return out.map((o) => ({ ...o, add: o.to - hand.contrib[p], size: sizeWord(hand, o.to), frac: fracBucket(potRatio(hand, o.to, p)) }));
+}
+
+/** Every option id Jev may choose now, with the concrete action it maps to. */
+export function jevOptions(hand) {
+  const out = [];
+  const kind = raiseRange(hand)?.kind;
+  for (const a of legalActions(hand)) if (a === 'fold' || a === 'check' || a === 'call') out.push({ id: a, act: a, to: 0 });
+  for (const o of sizeOptions(hand)) out.push({ id: o.id, act: kind, to: o.to });
+  return out;
 }
 
 /** Update opponent-profile stats for the player about to act (call BEFORE applyAction). */
@@ -275,12 +372,22 @@ export function recordStats(stats, hand, act) {
 }
 export const emptyStats = () => [{ agg: 0, pass: 0, faced: 0, folds: 0 }, { agg: 0, pass: 0, faced: 0, folds: 0 }];
 
-export function applyAction(hand, act) {
+export function applyAction(hand, act, to = 0) {
   const legal = legalActions(hand);
   if (!legal.includes(act)) throw new Error(`illegal action ${act} (legal: ${legal.join(',')})`);
   const p = hand.toAct, o = 1 - p;
-  const amt = amountFor(hand, act);
-  hand.history.push({ street: STREETS[hand.street], actor: p, act });
+  let size = null;
+  if (act === 'bet' || act === 'raise') {
+    const r = raiseRange(hand);
+    if (!Number.isInteger(to) || to < r.min || to > r.max) throw new Error(`illegal ${act} size ${to} (range ${r.min}..${r.max})`);
+    size = sizeWord(hand, to);
+    const inc = to - r.cur;
+    if (inc >= minIncrement(hand)) { hand.lastInc = inc; hand.raiseOk[o] = true; } // full raise: reopens
+    else if (hand.acted[o]) hand.raiseOk[o] = false; // short all-in: does not reopen
+    hand.acted[o] = false;
+  }
+  const amt = amountFor(hand, act, to);
+  hand.history.push({ street: STREETS[hand.street], actor: p, act, ...(size ? { size } : {}) });
   if (act === 'fold') {
     hand.log.push({ street: hand.street, who: p, act });
     return settle(hand, o);
@@ -288,7 +395,6 @@ export function applyAction(hand, act) {
   post(hand, p, amt);
   hand.log.push({ street: hand.street, who: p, act, amount: act === 'check' ? 0 : act === 'call' ? amt : hand.contrib[p], allin: hand.stacks[p] === 0 && amt > 0 });
   hand.acted[p] = true;
-  if (act === 'bet' || act === 'raise') { hand.bets++; hand.acted[o] = false; }
   const matched = hand.contrib[0] === hand.contrib[1]
     || (hand.contrib[p] < hand.contrib[o] && hand.stacks[p] === 0);
   // street closes once both have acted and bets are matched, or bets are matched and someone is all-in
@@ -307,11 +413,12 @@ function nextStreet(hand) {
   hand.street++;
   const n = hand.street === 1 ? 3 : 1;
   for (let i = 0; i < n; i++) hand.board.push(hand.deck.pop());
-  hand.contrib = [0, 0]; hand.bets = 0; hand.acted = [false, false];
+  hand.contrib = [0, 0]; hand.acted = [false, false]; hand.raiseOk = [true, true]; hand.lastInc = 0;
   hand.toAct = 1 - hand.button; // big blind acts first after the flop
 }
 
 function runOut(hand) {
+  if (hand.board.length < 5) hand.runoutFrom = hand.board.length; // all-in before the river
   while (hand.board.length < 5) hand.board.push(hand.deck.pop());
   hand.street = 3;
   const s0 = evaluate([...hand.holes[0], ...hand.board]);
@@ -322,19 +429,19 @@ function runOut(hand) {
 /** Award the pot. winner -1 = split. Uncalled chips are returned first. */
 function settle(hand, winner, scores = null) {
   const matched = Math.min(hand.total[0], hand.total[1]);
-  for (const p of [0, 1]) hand.stacks[p] += hand.total[p] - matched;
+  const returned = [0, 1].map((p) => hand.total[p] - matched);
+  for (const p of [0, 1]) hand.stacks[p] += returned[p];
   const pot = matched * 2;
   const won = [0, 0];
   if (winner === -1) {
     const half = Math.floor(pot / 2);
     won[0] = half; won[1] = half;
-    // odd chip (impossible with even blinds, kept for safety) goes to the big blind
-    if (pot % 2) won[1 - hand.button]++;
+    if (pot % 2) won[1 - hand.button]++; // odd chip (cannot happen: both put in the same) to the big blind
   } else won[winner] = pot;
   hand.stacks[0] += won[0]; hand.stacks[1] += won[1];
   hand.total = [0, 0]; hand.contrib = [0, 0];
   hand.done = true;
-  hand.result = { winner, pot, won, showdown: !!scores, names: scores ? scores.map(handName) : null };
+  hand.result = { winner, pot, won, returned, showdown: !!scores, names: scores ? scores.map(handName) : null };
   return hand;
 }
 
@@ -358,8 +465,14 @@ export function potOddsBucket(tc, pot) {
   return need < 0.2 ? 'great' : need < 0.28 ? 'good' : need < 0.36 ? 'fair' : 'poor';
 }
 
+/** Stack-to-pot ratio bucket (effective stack behind / pot). */
+export function sprBucket(eff, pot) {
+  const x = eff / Math.max(1, pot);
+  return x < 1 ? 'very_low' : x < 2.5 ? 'low' : x < 6 ? 'medium' : x < 13 ? 'high' : 'very_high';
+}
+
 /**
- * Compact payload validated by shared/games/holdem.js.
+ * Compact payload validated by shared/games/holdem.js. p must be the player to act.
  * stats: emptyStats()-shaped session stats; we read the opponent's entry.
  */
 export function makePayload(hand, p, stats, samples = 600, rng = Math.random) {
@@ -369,6 +482,7 @@ export function makePayload(hand, p, stats, samples = 600, rng = Math.random) {
   const eff = Math.min(hand.stacks[p], hand.stacks[o]);
   const pot = potSize(hand);
   const lead = (hand.stacks[p] + hand.total[p]) - (hand.stacks[o] + hand.total[o]);
+  const legal = legalActions(hand).filter((a) => a === 'fold' || a === 'check' || a === 'call');
   return {
     street: STREETS[hand.street],
     hole: hole.map(cardStr),
@@ -378,13 +492,18 @@ export function makePayload(hand, p, stats, samples = 600, rng = Math.random) {
     equity: equityBucket(e),
     pot_odds: potOddsBucket(toCall(hand, p), pot),
     position: hand.button === p ? 'button' : 'big_blind',
-    history: hand.history.slice(-24).map((x) => ({ street: x.street, actor: x.actor === p ? 'jev' : 'opp', act: x.act })),
+    history: hand.history.slice(-24).map((x) => ({ street: x.street, actor: x.actor === p ? 'jev' : 'opp', act: x.act, ...(x.size ? { size: x.size } : {}) })),
     opp_aggression: oppAggression(stats[o]),
     opp_fold_to_bet: oppFoldToBet(stats[o]),
-    stack: eff >= 120 ? 'deep' : eff >= 60 ? 'medium' : eff >= 24 ? 'short' : 'very_short',
-    pot: pot < 8 ? 'small' : pot < 20 ? 'medium' : pot < 40 ? 'large' : 'huge',
+    stack: eff >= 150 ? 'deep' : eff >= 70 ? 'medium' : eff >= 30 ? 'short' : 'very_short',
+    spr: sprBucket(eff, pot),
+    pot: pot < 8 ? 'small' : pot < 30 ? 'medium' : pot < 100 ? 'large' : 'huge',
     chips: lead > 120 ? 'well_ahead' : lead > 30 ? 'ahead' : lead >= -30 ? 'even' : lead >= -120 ? 'behind' : 'well_behind',
-    legal: legalActions(hand),
+    pot_chips: pot,
+    stack_chips: hand.stacks[p],
+    to_call: legal.includes('call') ? amountFor(hand, 'call') : 0,
+    legal,
+    options: sizeOptions(hand),
   };
 }
 
@@ -429,9 +548,7 @@ const RAW_ACT = { sb: 'small_blind', bb: 'big_blind' };
  */
 export function makeRawPayload(hand, p, past = [], handNo = 1) {
   const o = 1 - p;
-  const legal = legalActions(hand);
-  const aggr = legal.includes('bet') ? 'bet' : legal.includes('raise') ? 'raise' : null;
-  const add = aggr ? amountFor(hand, aggr) : 0;
+  const legal = legalActions(hand).filter((a) => a === 'fold' || a === 'check' || a === 'call');
   return {
     hand_no: handNo,
     street: STREETS[hand.street],
@@ -449,8 +566,7 @@ export function makeRawPayload(hand, p, past = [], handNo = 1) {
     })),
     legal,
     call_amount: legal.includes('call') ? amountFor(hand, 'call') : 0,
-    raise_to: add ? hand.contrib[p] + add : 0,
-    raise_add: add,
+    options: sizeOptions(hand).map(({ id, to, add }) => ({ id, to, add })),
     recent: past.slice(-6).map((r) => pastFor(r, p)),
   };
 }
@@ -459,44 +575,81 @@ export function makeRawPayload(hand, p, past = [], handNo = 1) {
 
 const EQ_MID = { very_weak: 0.22, weak: 0.36, marginal: 0.46, decent: 0.54, strong: 0.64, very_strong: 0.78, monster: 0.92 };
 const NEED = { none: 0, great: 0.17, good: 0.24, fair: 0.32, poor: 0.4 };
+const SIZE_DISCOUNT = { small: 0.03, medium: 0.045, large: 0.06, overbet: 0.08, allin: 0.11 };
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 const sig = (x) => 1 / (1 + Math.exp(-x));
+
+// Relative preference for each size word by intent.
+const SIZE_PREF = {
+  value: { small: 0.6, medium: 1, large: 0.8, overbet: 0.25, allin: 0.05 },
+  big: { small: 0.25, medium: 0.7, large: 1, overbet: 0.7, allin: 0.35 },
+  bluff: { small: 0.9, medium: 1, large: 0.45, overbet: 0.15, allin: 0.04 },
+};
+
+/** Split `total` weight across the size options. */
+function spread(opts, total, intent, pl, eq) {
+  const w = {};
+  if (!opts.length || total <= 0) return w;
+  const low = pl.spr === 'very_low' || pl.spr === 'low';
+  const pref = opts.map((o) => {
+    let x = SIZE_PREF[intent][o.size];
+    if (o.size === 'allin') {
+      if (low && eq > 0.6) x *= 6; // commit with a good hand when little is left behind
+      if (pl.stack === 'very_short' && eq > 0.5) x *= 8; // short stack: push or fold
+      if (eq > 0.88) x *= 2.5;
+    }
+    return Math.max(0.01, x);
+  });
+  const sum = pref.reduce((a, b) => a + b, 0);
+  opts.forEach((o, i) => { w[o.id] = total * pref[i] / sum; });
+  return w;
+}
 
 export function botPolicy(pl) {
   const street = pl.street;
   const oppAggr = pl.history.filter((x) => x.actor === 'opp' && (x.act === 'bet' || x.act === 'raise'));
   const oppAggrStreet = oppAggr.filter((x) => x.street === street).length;
   const profAdj = { unknown: 0, passive: -0.04, balanced: 0, aggressive: 0.03, very_aggressive: 0.06 }[pl.opp_aggression];
-  // random-hand equity overstates us against a betting range; discount per opponent bet/raise
-  let eq = EQ_MID[pl.equity] - Math.min(0.15, 0.045 * oppAggr.length) + (oppAggr.length ? profAdj : 0);
+  // random-hand equity overstates us against a betting range; discount per opponent bet/raise, more for big ones
+  const disc = Math.min(0.25, oppAggr.reduce((a, x) => a + (SIZE_DISCOUNT[x.size] ?? 0.045), 0));
+  let eq = EQ_MID[pl.equity] - disc + (oppAggr.length ? profAdj : 0);
   eq = clamp(eq, 0.02, 0.98);
-  const drawBonus = { none: 0, gutshot: 0.04, open_ended: 0.1, flush_draw: 0.12, combo_draw: 0.22 }[pl.draw];
+  const drawBonus = street === 'river' ? 0 : { none: 0, gutshot: 0.04, open_ended: 0.1, flush_draw: 0.12, combo_draw: 0.22 }[pl.draw];
   const foldy = { unknown: 0.15, rarely: 0.05, sometimes: 0.15, often: 0.3 }[pl.opp_fold_to_bet];
+  const opts = pl.options;
   const w = {};
-  const L = new Set(pl.legal);
-  const aggKey = L.has('bet') ? 'bet' : L.has('raise') ? 'raise' : null;
-  if (L.has('call')) {
+  if (pl.legal.includes('call')) {
     const need = NEED[pl.pot_odds] || 0.2;
     const eqc = eq + drawBonus * 0.5;
     w.call = sig(12 * (eqc - need));
     w.fold = 1 - w.call;
-    if (aggKey) {
-      w.raise = eq > 0.6 ? (eq - 0.45) * 2.5 : drawBonus > 0.1 ? 0.15 + foldy * 0.3 : 0.03;
-      if (eq > 0.85) { w.raise *= 0.7; w.call += 0.3; } // occasional slow-play
+    if (pl.stack === 'very_short' && eq > 0.45) { w.call += 0.3; } // too short to fold a fair hand
+    if (opts.length) {
+      let r;
+      if (eq > 0.6) r = { total: (eq - 0.45) * 2.5, intent: eq > 0.78 ? 'big' : 'value' };
+      else if (drawBonus > 0.1) r = { total: 0.12 + foldy * 0.3, intent: 'bluff' };
+      else r = { total: 0.03 + foldy * 0.05, intent: 'bluff' };
+      if (eq > 0.85) { r.total *= 0.7; w.call += 0.3; } // occasional slow-play
+      Object.assign(w, spread(opts, r.total, r.intent, pl, eq));
     }
   } else {
     w.check = 1;
-    if (aggKey) {
-      let b = eq >= 0.52 ? (eq - 0.35) * 2.2 : 0.08 + foldy * 0.6 + drawBonus * 1.5; // value vs bluff/semi-bluff
-      if (street === 'river' && eq < 0.52) b = 0.05 + foldy * 0.7; // pure bluffs only on the river
+    if (opts.length) {
+      let b, intent;
+      if (eq >= 0.52) { b = (eq - 0.35) * 2.2; intent = eq > 0.75 ? 'big' : 'value'; } else {
+        b = 0.08 + foldy * 0.6 + drawBonus * 1.5; intent = 'bluff'; // bluff / semi-bluff
+        if (street === 'river') b = 0.05 + foldy * 0.7; // pure bluffs only on the river
+      }
       if (eq > 0.85) b *= 0.7; // slow-play sometimes
-      w[aggKey] = clamp(b, 0.03, 0.95);
-      w.check = 1 - w[aggKey];
-      if (eq > 0.85) w.check = Math.max(w.check, 0.25);
+      b = clamp(b, 0.03, 0.95);
+      w.check = 1 - b;
+      if (eq > 0.85) w.check = Math.max(w.check, 0.2);
+      Object.assign(w, spread(opts, b, intent, pl, eq));
     }
   }
   const out = {};
   for (const a of pl.legal) out[a] = Math.max(0.001, w[a] ?? 0);
+  for (const o of opts) out[o.id] = Math.max(0.001, w[o.id] ?? 0);
   const bluff = clamp(0.25 + profAdj * 3 + (oppAggrStreet ? 0.05 : -0.1), 0.03, 0.9);
   return { action: out, opp_bluffing: bluff, ahead: clamp(eq, 0.02, 0.98) };
 }

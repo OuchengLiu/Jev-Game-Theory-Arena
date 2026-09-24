@@ -5,24 +5,38 @@ compatibility_date = "2026-09-01"
 [vars]
 # Comma-separated list of origins allowed to call the proxy (no trailing slash).
 ALLOWED_ORIGINS = "https://ouchengliu.github.io,http://localhost:8000"
-# Global cap on Jev calls per UTC day (requires the USAGE KV namespace below).
+# Jev moves allowed per UTC day, site-wide and per visitor.
 DAILY_LIMIT = "20000"
+IP_DAILY_LIMIT = "600"
+# Invalid requests per visitor per day before a temporary block (normal play never sends any).
+MAX_INVALID = "20"
+BLOCK_HOURS = "24"
 
 # Secrets (never commit these) — set with:
 #   npx wrangler secret put TYPESAFE_API_KEY
 #   npx wrangler secret put TURNSTILE_SECRET   (optional, enables the human check)
 #   npx wrangler secret put SESSION_SECRET     (required if TURNSTILE_SECRET is set; any long random string)
 
-# Per-IP rate limit: 40 decisions per minute.
+# Short bursts per visitor: 8 moves / 10 s and 30 moves / minute.
 [[ratelimits]]
-name = "RATE_LIMITER"
+name = "BURST_LIMITER"
 namespace_id = "1001"
   [ratelimits.simple]
-  limit = 40
+  limit = 8
+  period = 10
+
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1002"
+  [ratelimits.simple]
+  limit = 30
   period = 60
 
-# Optional: daily global budget. Create with `npx wrangler kv namespace create USAGE`
-# and paste the id here.
-# [[kv_namespaces]]
-# binding = "USAGE"
-# id = "<your-kv-namespace-id>"
+# Exact daily counters + block list (Durable Object, SQLite storage — available on the free plan).
+[[durable_objects.bindings]]
+name = "GUARD"
+class_name = "Guard"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Guard"]
