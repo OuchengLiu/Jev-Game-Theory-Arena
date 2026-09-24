@@ -98,6 +98,7 @@ export default {
       newGame: 'New game',
       q: 'Raise or call Liar?',
       qOpen: 'Opening bid',
+      mvOpen: 'Opening · Jev bids {bid}', mvRaise: 'Jev raises to {bid}', mvLiar: 'Jev calls Liar on {bid}',
       thinksBluff: 'Thinks you’re bluffing',
       caption: 'For fun and learning · no real money',
       jevDice: 'Jev’s dice', yourDice: 'Your dice', cupDown: 'Jev’s dice are hidden under the cup',
@@ -141,6 +142,7 @@ export default {
       newGame: '新开一局',
       q: '继续叫还是开？',
       qOpen: '第一口叫点',
+      mvOpen: '开局 · Jev 叫 {bid}', mvRaise: 'Jev 加叫到 {bid}', mvLiar: 'Jev 对 {bid} 喊“开”',
       thinksBluff: '认为你在吹牛',
       caption: '仅供娱乐与学习 · 不涉及金钱',
       jevDice: 'Jev 的骰子', yourDice: '你的骰子', cupDown: 'Jev 的骰子扣在盅里',
@@ -170,6 +172,9 @@ export default {
     // The die a player just lost is still drawn (fading) until the next round starts.
     const lost = (who) => (phase !== 'bidding' && reveal?.shown && reveal.loser === who ? 1 : 0);
     const bidLabel = (b) => L('bidLabel', { q: b.qty, f: b.face });
+    // Jev modes: Jev's odds are sealed during a round and reviewed once the dice are revealed;
+    // the review stays up until Jev's first decision of the next round.
+    let reviewing = false;
 
     function defaultPick() {
       const cur = current();
@@ -199,6 +204,8 @@ export default {
       stats = { honest: 0, bluff: 0 }; // how truthful the human's bids have been (Jev's view)
       log = []; // finished rounds, for the raw-mode record
       roundNo = 0;
+      reviewing = false;
+      panel.clearSealed();
       panel.waiting();
       startRound(Math.random() < 0.5 ? 'you' : 'jev');
     }
@@ -233,7 +240,7 @@ export default {
       busy = true;
       turn = 'jev';
       render();
-      panel.thinking();
+      if (!reviewing) panel.thinking(); // keep last round's review up until Jev actually moves
       await sleep(bids.length ? 450 : 900);
       if (!alive || g !== gen) return;
       const view = bids.map((b) => ({ by: jevView(b.by), qty: b.qty, face: b.face }));
@@ -251,10 +258,12 @@ export default {
       const shown = [...legal].sort((a, b) => (probs[b] || 0) - (probs[a] || 0)).slice(0, PANEL_TOP);
       if (!shown.includes(id)) shown[shown.length - 1] = id;
       shown.sort((a, b) => (probs[b] || 0) - (probs[a] || 0));
-      panel.show(res, {
+      reviewing = false;
+      panel.reveal(res, {
         labels: () => Object.fromEntries(shown.map((k) => [k, optionMap[k].type === 'challenge' ? L('liar') : bidLabel(optionMap[k])])),
         picked: id,
-        title: () => L(cur ? 'q' : 'qOpen'),
+        title: () => (opt.type === 'challenge' ? L('mvLiar', { bid: bidLabel(cur) })
+          : L(cur ? 'mvRaise' : 'mvOpen', { bid: bidLabel(opt) })),
         extras: () => (cur ? [{ label: L('thinksBluff'), value: res.answers?.opp_bluffing?.noul }] : []),
       });
       if (opt.type === 'challenge') {
@@ -298,6 +307,7 @@ export default {
       if (!alive || g !== gen) return;
       reveal.shown = true;
       reveal.at = now();
+      if (panel.sealed?.length) { panel.unseal(); reviewing = true; }
       // Mark one of the loser's dice as the one that goes (prefer a non-matching die).
       const ld = dice[loser];
       let idx = ld.findIndex((d) => d !== bid.face && d !== 1);
@@ -558,6 +568,7 @@ export default {
       destroy() {
         alive = false;
         gen++;
+        panel.clearSealed();
         timers.forEach(clearTimeout);
         timers.clear();
       },

@@ -525,7 +525,7 @@ export default {
         h('div.scoreboard',
           h('div.sb-side', h('small', t('you')), h('b.bl-sb-you', score.you)),
           h('div.sb-mid', h('small', t('round')), h('b', `${roundNo} / ${ROUNDS}`)),
-          h('div.sb-side.right', h('small', 'Jev'), h('b.bl-sb-jev', score.jev)),
+          h('div.sb-side.right', h('small', t('opp')), h('b.bl-sb-jev', score.jev)),
         ),
         pips(),
         phase === 'plan' ? h('p.prompt.bl-prompt', L('plan', { n: history.length + 1 })) : null,

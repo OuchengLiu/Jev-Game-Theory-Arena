@@ -1,0 +1,20 @@
+{
+  "version": "1.1.0",
+  "date": "2026-09-24",
+  "notes": {
+    "en": [
+      "New game: Colonel Blotto",
+      "Hold'em is now No-Limit: bet any amount or go all-in",
+      "Three opponent modes: Jev Hinted, Jev Raw, and Practice",
+      "Jev's odds in hidden-card games are now revealed after each hand",
+      "Fresh look for every game"
+    ],
+    "zh": [
+      "新游戏：布洛托上校",
+      "德州改为无限注：可以自由下注、全下",
+      "三种对手模式：Jev 提示模式、Jev 直觉模式、练习模式",
+      "有底牌的游戏里，Jev 的概率改为每手结束后公开",
+      "所有游戏的全新界面"
+    ]
+  }
+}

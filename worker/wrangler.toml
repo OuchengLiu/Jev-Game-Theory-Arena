@@ -12,8 +12,12 @@ IP_DAILY_LIMIT = "600"
 MAX_INVALID = "20"
 BLOCK_HOURS = "24"
 
+# Jev runs through Cloudflare Workers AI (model "typesafe/jev") — no TypeSafe key needed.
+[ai]
+binding = "AI"
+
 # Secrets (never commit these) — set with:
-#   npx wrangler secret put TYPESAFE_API_KEY
+#   npx wrangler secret put TYPESAFE_API_KEY   (optional: use TypeSafe's own API instead of Workers AI)
 #   npx wrangler secret put TURNSTILE_SECRET   (optional, enables the human check)
 #   npx wrangler secret put SESSION_SECRET     (required if TURNSTILE_SECRET is set; any long random string)
 

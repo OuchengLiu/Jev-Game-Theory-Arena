@@ -10,6 +10,9 @@
 //   5. optionally requires a Cloudflare Turnstile check, exchanged for a short-lived signed session
 //   6. returns only { model, answers }
 //
+// Jev is reached through the Workers AI binding (model typesafe/jev, billed to the Cloudflare
+// account) or, if the TYPESAFE_API_KEY secret is set, through TypeSafe's own API.
+//
 // Every refusal is JSON: { error: <code>, retryAfter?: <seconds> } so the site can explain it.
 //   burst · ip_daily · global_daily · blocked · not_configured · upstream_busy · unavailable
 //   bad_request · session_required · forbidden
@@ -18,6 +21,7 @@ import { buildJevRequest, SchemaError } from '../../shared/prompts.js';
 export { Guard } from './guard.js';
 
 const TYPESAFE_URL = 'https://api.typesafe.ai/v1/systemone';
+const WORKERS_AI_MODEL = 'typesafe/jev';
 const MAX_BODY_BYTES = 8 * 1024;
 const SESSION_TTL_S = 30 * 60;
 
@@ -102,13 +106,27 @@ export default {
       return json(400, { error: 'bad_request', detail: e instanceof SchemaError ? e.message : undefined });
     }
 
-    if (!env.TYPESAFE_API_KEY) return json(503, { error: 'not_configured', retryAfter: 600 });
+    const provider = env.TYPESAFE_API_KEY ? 'typesafe' : env.AI ? 'workers-ai' : null;
+    if (!provider) return json(503, { error: 'not_configured', retryAfter: 600 });
 
     // ---- daily quotas (per visitor and site-wide) + block list ----
     const verdict = await askGuard('consume');
     if (!verdict.ok) return refuse(verdict);
 
-    // ---- call Jev ----
+    // ---- call Jev: Cloudflare Workers AI (typesafe/jev) or TypeSafe's own API ----
+    if (provider === 'workers-ai') {
+      try {
+        const out = unwrapAi(await env.AI.run(WORKERS_AI_MODEL, { state: jevRequest.state, questions: jevRequest.questions }));
+        if (!out?.answers) throw new Error('empty response');
+        return json(200, { model: out.model || WORKERS_AI_MODEL, answers: out.answers });
+      } catch (e) {
+        const msg = String(e?.message || e);
+        console.log('workers-ai failure', msg);
+        // capacity / rate errors → busy; everything else → unavailable
+        if (/capacity|rate|limit|429|3040|neuron/i.test(msg)) return json(503, { error: 'upstream_busy', retryAfter: 60 });
+        return json(502, { error: 'unavailable', retryAfter: 30 });
+      }
+    }
     try {
       const res = await fetch(TYPESAFE_URL, {
         method: 'POST',
@@ -132,6 +150,13 @@ export default {
 };
 
 // ---------------- helpers ----------------
+
+// Workers AI may return the evaluation directly or wrapped ({ result: {...} } / { state, result }).
+function unwrapAi(r) {
+  let out = r;
+  for (let i = 0; i < 3 && out && !out.answers && typeof out === 'object'; i++) out = out.result ?? out.response ?? null;
+  return out;
+}
 
 // Visitors are tracked by a salted hash of their IP, never the raw address.
 async function hashIp(ip) {

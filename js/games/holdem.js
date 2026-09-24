@@ -48,6 +48,8 @@ const SUIT_PATH = [
   // club
   '<circle cx="50" cy="27" r="20"/><circle cx="26" cy="57" r="20"/><circle cx="74" cy="57" r="20"/><circle cx="50" cy="52" r="12"/><path d="M45 56c0 18-5 30-14 40h38c-9-10-14-22-14-40z"/>',
 ];
+// Small crown ornament above a court card's letter.
+const CROWN = '<svg viewBox="0 0 40 22" aria-hidden="true" fill="currentColor"><path d="M3 7l8 6 9-11 9 11 8-6-3 12H6z"/><rect x="6" y="19.5" width="28" height="2.5" rx="1"/></svg>';
 const suitSvg = (s) => `<svg viewBox="0 0 100 100" aria-hidden="true" fill="currentColor">${SUIT_PATH[s]}</svg>`;
 const SUIT_NAME = { en: ['spades', 'hearts', 'diamonds', 'clubs'], zh: ['黑桃', '红心', '方块', '梅花'] };
 
@@ -146,6 +148,7 @@ export default {
       bustJev: 'Jev is out of chips after {n} hands.',
       bustYou: 'You are out of chips after {n} hands.',
       q: 'Jev’s action ({street})',
+      qMove: '{street} · Jev {act}',
       oppBluff: 'You are bluffing',
       jevAhead: 'Jev is ahead',
       virtual: 'Virtual chips · no real money',
@@ -184,6 +187,7 @@ export default {
       bustJev: '打了 {n} 手，Jev 的筹码输光了。',
       bustYou: '打了 {n} 手，你的筹码输光了。',
       q: 'Jev 的行动（{street}）',
+      qMove: '{street} · Jev {act}',
       oppBluff: '你在诈唬',
       jevAhead: 'Jev 领先',
       virtual: '虚拟筹码 · 不涉及金钱',
@@ -208,6 +212,10 @@ export default {
     let stacks, button, hand, stats, handNo, busy, over, past, results;
     let sel = 0, selKey = ''; // the human's chosen bet/raise total, remembered per decision
     let revealAt = 0, plan = null; // all-in run-out: results stay hidden until revealAt
+    // Jev modes: Jev's odds are sealed during a hand and reviewed when it ends; the review stays
+    // up until Jev's first decision of the next hand.
+    let reviewing = false;
+    const endOfHand = () => { if (panel.sealed?.length) { panel.unseal(); reviewing = true; } };
     const revealing = () => hand.done && performance.now() < revealAt;
 
     const wait = (ms) => new Promise((resolve) => {
@@ -242,6 +250,8 @@ export default {
       results = [];
       over = false;
       busy = false;
+      reviewing = false;
+      panel.clearSealed();
       panel.waiting();
       startHand();
     }
@@ -276,7 +286,9 @@ export default {
             plan = runoutPlan(hand.runoutFrom);
             revealAt = performance.now() + plan.end;
             const g = gen;
-            wait(plan.end + 30).then(() => { if (alive && g === gen) render(); });
+            wait(plan.end + 30).then(() => { if (alive && g === gen) { endOfHand(); render(); } });
+          } else {
+            endOfHand();
           }
         }
         busy = false;
@@ -319,7 +331,7 @@ export default {
     async function jevTurn() {
       const g = gen;
       const t0 = performance.now();
-      panel.thinking();
+      if (!reviewing) panel.thinking(); // don't wipe last hand's review before the first sealed move
       await wait(250);
       if (!alive || g !== gen) return;
       const cur = hand;
@@ -341,10 +353,12 @@ export default {
       if (!alive || g !== gen) return;
       const id = ctx.pickAction(res.answers?.action, ids);
       const o = opts.find((x) => x.id === id) || opts[0];
-      panel.show(res, {
+      const moveN = o.act === 'call' ? callN : o.to;
+      reviewing = false;
+      panel.reveal(res, {
         labels: () => Object.fromEntries(opts.map((x) => [x.id, optLabel(x, callN)])),
         picked: o.id,
-        title: () => T('q', { street: T(STREETS[street]) }),
+        title: () => T('qMove', { street: T(STREETS[street]), act: T(`l_${o.act}`, { n: moveN }) }),
         extras: () => [
           { label: T('oppBluff'), value: res.answers?.opp_bluffing?.noul },
           { label: T('jevAhead'), value: res.answers?.ahead?.noul },
@@ -357,7 +371,7 @@ export default {
 
     // ---------- rendering ----------
 
-    const who = (p) => (p === HUMAN ? t('you') : 'Jev');
+    const who = (p) => (p === HUMAN ? t('you') : t('opp'));
 
     function cardLabel(c) {
       return T('card', { rank: RANK_LABEL[rankOf(c)], suit: SUIT_NAME[lang()][suitOf(c)] });
@@ -370,7 +384,7 @@ export default {
       return h('span.hd-face', { class: `${s === 1 || s === 2 ? 'hd-red' : 'hd-black'}${r === 8 ? ' hd-ten' : ''}` },
         idx('tl'),
         court
-          ? h('span.hd-court', h('span.hd-court-l', RANK_LABEL[r]), h('span.hd-court-s', { html: suitSvg(s) }))
+          ? h('span.hd-court', h('span.hd-crown', { html: CROWN }), h('span.hd-court-l', RANK_LABEL[r]), h('span.hd-court-s', { html: suitSvg(s) }))
           : h('span.hd-pip', { class: r === 12 ? 'hd-ace' : null, html: suitSvg(s) }),
         idx('br'),
       );
@@ -472,7 +486,7 @@ export default {
         h('div.hd-plate-wrap',
           hand.button === p ? h('span.hd-puck', { title: T('dealer'), 'aria-label': T('dealer') }, 'D') : null,
           h('div.hd-plate',
-            h('span.hd-ava', { class: p === JEV ? 'hd-ava-jev' : 'hd-ava-you' }, p === JEV ? 'J' : T('mono')),
+            h('span.hd-ava', { class: p === JEV ? 'hd-ava-jev' : 'hd-ava-you' }, p === JEV ? t('opp').slice(0, 1) : T('mono')),
             h('span.hd-pinfo',
               h('b.hd-pname', who(p)),
               allin
@@ -707,6 +721,7 @@ export default {
       destroy() {
         alive = false;
         gen++;
+        panel.clearSealed();
         timers.forEach(clearTimeout);
         timers.clear();
       },

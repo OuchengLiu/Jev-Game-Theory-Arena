@@ -1,4 +1,4 @@
-import { settings } from './settings.js';
+import { settings, effectiveMode } from './settings.js';
 
 const dict = {
   en: {
@@ -11,15 +11,15 @@ const dict = {
     'hero.kicker': 'Six games · Free · No sign-up',
     'hero.title.a': 'Outthink a model',
     'hero.title.b': 'that doesn’t talk.',
-    'hero.body': 'Jev doesn’t chat. It weighs every move you could make and gives each one a probability, then plays by rolling the dice on those odds. You see its full reasoning after every move.',
+    'hero.body': 'Jev doesn’t chat. It weighs every move you could make and gives each one a probability, then plays by rolling the dice on those odds. Once each round or hand is over, you can see exactly how it weighed every move.',
     'hero.cta': 'Choose a game',
     'hero.cta2': 'What is Jev?',
     'games.title': 'Pick your game',
-    'games.sub': 'Bluffing, trust, fairness and pure strategy. Every game is short, and Jev’s odds are shown after each move.',
+    'games.sub': 'Bluffing, trust, fairness and pure strategy. Every game is short, and you get to see Jev’s odds once each round or hand is over.',
     'meta.minutes': '{n} min',
     'back': 'All games',
     'rules': 'How to play',
-    'jevmode.label': 'Jev mode',
+    'jevmode.label': 'Opponent',
     'mode.hinted': 'Hinted',
     'mode.raw': 'Raw',
     'mode.info.title': 'Two ways Jev can play',
@@ -32,6 +32,9 @@ const dict = {
     'think.waiting': 'Make your move. Jev’s probabilities will appear here.',
     'think.thinking': 'Thinking…',
     'think.confidence': 'confidence',
+    'think.sealed.t': 'Jev has moved',
+    'think.sealed.b': 'Its odds stay sealed until this round is over, so they can’t give away its hidden cards or dice. Moves so far: {n}.',
+    'think.review': 'Jev’s thinking this round · {n} moves',
     'think.picked': 'played',
     'think.ms': '{ms} ms',
     'think.fallback.burst': 'You’re playing fast! The practice bot played this move while Jev catches up.',
@@ -72,12 +75,18 @@ const dict = {
     'disclaimer': 'Jev Game Theory Lab is an educational project for learning game theory. It involves no real money, betting, payments or prizes. All chips, coins and points are virtual and have no value.',
     'footer.oss': 'Open source (MIT)',
     'footer.unofficial': 'Unofficial community project, not affiliated with TypeSafe AI.',
+    'update.new': 'A new version ({v}) is available',
+    'update.new.b': 'Refresh to get the latest games and fixes.',
+    'update.refresh': 'Refresh now',
+    'update.later': 'Later',
+    'update.whatsnew': 'What’s new in {v}',
+    'update.ok': 'Got it',
     'about.title': 'About',
     'about.lead': 'A small lab for playing classic game-theory games against Jev, a new kind of AI model.',
     'about.jev.t': 'What is Jev?',
     'about.jev.b': 'Jev is a “System One” model made by TypeSafe AI. Chat AIs write text. Jev makes quick judgements instead: given a situation and a list of options, it returns a calibrated probability for each one, usually in well under a second.',
     'about.mix.t': 'Why its moves feel unpredictable',
-    'about.mix.b': 'In game theory, the best play is often random: a bluff has to be possible to be believed. Jev’s probabilities are exactly such a mixed strategy, and every move is drawn from them. Its odds are shown after each move, so you can see where it’s strong, where it hesitates, and how to exploit it.',
+    'about.mix.b': 'In game theory, the best play is often random: a bluff has to be possible to be believed. Jev’s probabilities are exactly such a mixed strategy, and every move is drawn from them. Its odds are shown once each round or hand is over (never while its cards are still hidden), so you can see where it’s strong, where it hesitates, and how to exploit it.',
     'about.modes.t': 'Hinted, Raw and Practice',
     'about.games.t': 'The games',
     'about.oss.t': 'Open source',
@@ -94,15 +103,15 @@ const dict = {
     'hero.kicker': '六款游戏 · 免费 · 无需注册',
     'hero.title.a': '和一个不会说话的模型',
     'hero.title.b': '斗智。',
-    'hero.body': 'Jev 不聊天。它会权衡你所有可能的走法，为每一个给出概率，再按这些概率掷骰子出招。每一步之后，你都能看到它完整的判断。',
+    'hero.body': 'Jev 不聊天。它会权衡你所有可能的走法，为每一个给出概率，再按这些概率掷骰子出招。每一回合或每一手结束后，你都能看到它是怎么权衡每一步的。',
     'hero.cta': '选一个游戏',
     'hero.cta2': 'Jev 是什么？',
     'games.title': '选择游戏',
-    'games.sub': '诈唬、信任、公平与纯粹的策略。每局都很短，每一步之后都能看到 Jev 的概率。',
+    'games.sub': '诈唬、信任、公平与纯粹的策略。每局都很短，每一回合或每一手结束后，都能看到 Jev 的概率。',
     'meta.minutes': '{n} 分钟',
     'back': '全部游戏',
     'rules': '玩法规则',
-    'jevmode.label': 'Jev 模式',
+    'jevmode.label': '对手',
     'mode.hinted': '提示模式',
     'mode.raw': '直觉模式',
     'mode.info.title': 'Jev 的两种玩法',
@@ -115,6 +124,9 @@ const dict = {
     'think.waiting': '请出招，Jev 给出的概率会显示在这里。',
     'think.thinking': '思考中…',
     'think.confidence': '置信度',
+    'think.sealed.t': 'Jev 已出招',
+    'think.sealed.b': '为了不泄露它的底牌或骰子，思考过程会在本轮结束后公开。已出招 {n} 次。',
+    'think.review': '本轮 Jev 的思考 · 共 {n} 步',
     'think.picked': '出招',
     'think.ms': '{ms} 毫秒',
     'think.fallback.burst': '你出招太快啦！Jev 缓一缓，这一步由练习机器人出招。',
@@ -155,12 +167,18 @@ const dict = {
     'disclaimer': 'Jev 博弈实验室是一个学习博弈论的教育项目，不涉及任何真实金钱、赌注、支付或奖品。所有筹码、金币和分数都是虚拟的，没有任何价值。',
     'footer.oss': '开源（MIT）',
     'footer.unofficial': '非官方社区项目，与 TypeSafe AI 无关联。',
+    'update.new': '新版本（{v}）已发布',
+    'update.new.b': '刷新页面即可体验最新的游戏和修复。',
+    'update.refresh': '立即刷新',
+    'update.later': '稍后',
+    'update.whatsnew': '{v} 更新内容',
+    'update.ok': '知道了',
     'about.title': '关于',
     'about.lead': '一个小小的实验室：和一种新型 AI 模型 Jev 玩经典的博弈论游戏。',
     'about.jev.t': 'Jev 是什么？',
     'about.jev.b': 'Jev 是 TypeSafe AI 推出的“System One”模型。聊天 AI 负责写文字，Jev 负责快速判断：给它一个局面和一组选项，它会为每个选项返回校准过的概率，通常不到一秒。',
     'about.mix.t': '为什么它的出招难以预测',
-    'about.mix.b': '博弈论告诉我们，最好的打法往往带有随机性：诈唬必须有可能发生，才会有人信。Jev 给出的概率正是这样一个混合策略，每一步都按这些概率抽取。每一步之后都会显示它的概率，你能看出它哪里强势、哪里犹豫，以及怎么针对它。',
+    'about.mix.b': '博弈论告诉我们，最好的打法往往带有随机性：诈唬必须有可能发生，才会有人信。Jev 给出的概率正是这样一个混合策略，每一步都按这些概率抽取。每一回合或每一手结束后都会公开它的概率（底牌还没亮出时不会显示），你能看出它哪里强势、哪里犹豫，以及怎么针对它。',
     'about.modes.t': '提示模式、直觉模式与练习模式',
     'about.games.t': '游戏',
     'about.oss.t': '开源',
@@ -169,15 +187,32 @@ const dict = {
   },
 };
 
+const gameNamespaces = new Set();
+
 export function registerStrings(ns, strings) {
+  gameNamespaces.add(ns);
   for (const lang of Object.keys(dict)) {
     for (const [k, v] of Object.entries(strings[lang] || strings.en || {})) dict[lang][`${ns}.${k}`] = v;
   }
 }
 
-export function t(key, vars) {
-  const lang = settings.get('lang');
-  let s = dict[lang]?.[key] ?? dict.en[key] ?? key;
-  if (vars) s = s.replace(/\{(\w+)\}/g, (_, k) => (k in vars ? vars[k] : `{${k}}`));
+// In Practice mode the opponent is the built-in bot, so game texts must not call it "Jev".
+const BOT = { en: 'Bot', zh: '机器人' };
+function botify(s, lang) {
+  s = s.replace(/\bJev’s\b/g, lang === 'zh' ? '机器人的' : 'The bot’s').replace(/\bJEV\b/g, lang === 'zh' ? '机器人' : 'BOT').replace(/\bJev\b/g, BOT[lang]);
+  if (lang === 'zh') s = s.replace(/([\u3000-\u9fff\uff00-\uffef])\s+机器人/g, '$1机器人').replace(/机器人\s+([\u3000-\u9fff\uff00-\uffef])/g, '机器人$1');
   return s;
 }
+
+export function t(key, vars) {
+  const lang = settings.get('lang');
+  if (key === 'opp') return effectiveMode() === 'practice' ? BOT[lang] : 'Jev';
+  let s = dict[lang]?.[key] ?? dict.en[key] ?? key;
+  if (vars) s = s.replace(/\{(\w+)\}/g, (_, k) => (k in vars ? vars[k] : `{${k}}`));
+  const ns = key.split('.')[0];
+  if (effectiveMode() === 'practice' && (gameNamespaces.has(ns) || OPP_KEYS.has(key))) s = botify(s, lang);
+  return s;
+}
+
+// Global strings that name the opponent (not Jev itself).
+const OPP_KEYS = new Set(['result.lose', 'think.waiting']);

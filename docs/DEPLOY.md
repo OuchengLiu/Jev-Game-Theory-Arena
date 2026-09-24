@@ -9,7 +9,7 @@ The site has two parts:
 | Part | Where it runs | Holds secrets? |
 |---|---|---|
 | Static website (`index.html`, `css/`, `js/`, `shared/`) | GitHub Pages, or any static host | No |
-| API proxy (`worker/`) | Cloudflare Workers (the free tier is enough) | Yes: your TypeSafe API key, stored as a Worker secret |
+| API proxy (`worker/`) | Cloudflare Workers (the free tier is enough) | Only if you use TypeSafe's own API (then its key is a Worker secret). With Workers AI there is no key at all |
 
 The browser never sees the API key. Without the proxy, the site still works and a built-in practice bot plays instead of Jev.
 
@@ -24,8 +24,8 @@ Requires Node.js 18 or later.
 ```bash
 cd worker
 npx wrangler login                          # or: export CLOUDFLARE_API_TOKEN=... ("Edit Cloudflare Workers" template)
-npx wrangler secret put TYPESAFE_API_KEY    # paste your key from https://console.typesafe.ai/keys
-npx wrangler deploy
+npx wrangler deploy                         # Jev is reached through Workers AI (typesafe/jev), billed to your Cloudflare account
+# optional: npx wrangler secret put TYPESAFE_API_KEY   to use TypeSafe's own API instead
 ```
 
 Then:
@@ -48,6 +48,13 @@ Every refusal returns `{ error, retryAfter }`. The site shows a matching notice 
 
 **Recommended:** if the TypeSafe console offers usage limits or alerts, set them too. If a key ever leaks, revoke it there and run `npx wrangler secret put TYPESAFE_API_KEY` again. No website change is needed.
 
+### Releasing an update
+
+1. Bump `VERSION` in `js/version.js`, and `version` plus `notes` (en/zh) in `version.json`, to the same new number.
+2. Commit and push.
+
+Visitors who have the site open will see "A new version is available" with a one-click refresh (it re-downloads every file, just like Ctrl+Shift+R). Returning visitors will see the release notes once.
+
 ### Cost estimate
 
 At $0.042 per million input tokens and roughly 400–900 tokens per move, 20,000 moves a day costs well under $1.
@@ -61,7 +68,7 @@ At $0.042 per million input tokens and roughly 400–900 tokens per move, 20,000
 | 部分 | 运行在哪里 | 是否包含机密 |
 |---|---|---|
 | 静态网站（`index.html`、`css/`、`js/`、`shared/`） | GitHub Pages 或任意静态托管 | 否 |
-| API 代理（`worker/`） | Cloudflare Workers（免费额度即可） | 是：TypeSafe API Key，作为 Worker secret 保存 |
+| API 代理（`worker/`） | Cloudflare Workers（免费额度即可） | 只有改用 TypeSafe 自己的 API 时才有（Key 作为 Worker secret 保存）；用 Workers AI 时完全没有 Key |
 
 浏览器永远拿不到 Key。不部署代理时网站也能用，由内置的练习机器人代替 Jev。
 
@@ -76,8 +83,8 @@ At $0.042 per million input tokens and roughly 400–900 tokens per move, 20,000
 ```bash
 cd worker
 npx wrangler login                          # 或者：export CLOUDFLARE_API_TOKEN=...（选 "Edit Cloudflare Workers" 模板）
-npx wrangler secret put TYPESAFE_API_KEY    # 粘贴在 https://console.typesafe.ai/keys 申请的 Key
-npx wrangler deploy
+npx wrangler deploy                         # 通过 Cloudflare Workers AI（typesafe/jev）调用 Jev，费用记在你的 Cloudflare 账号上
+# 可选：npx wrangler secret put TYPESAFE_API_KEY   改用 TypeSafe 自己的 API
 ```
 
 然后：
@@ -99,6 +106,13 @@ npx wrangler deploy
 每次拒绝都会返回 `{ error, retryAfter }`。网站会显示对应的提示和倒计时（“出招太快”“今天的次数用完了”“暂停使用”“Jev 正忙”），在此期间由练习机器人出招，并提供一键切换到练习模式的按钮。玩家不能使用自己的 API Key。
 
 **建议：** 如果 TypeSafe 控制台支持用量上限或提醒，也一并设置。Key 一旦泄露，就在控制台作废它，再运行一次 `npx wrangler secret put TYPESAFE_API_KEY`，网站不用做任何改动。
+
+### 发布更新
+
+1. 把 `js/version.js` 里的 `VERSION`，和 `version.json` 里的 `version` 与 `notes`（中英文），改成同一个新版本号。
+2. 提交并推送。
+
+正开着网站的访客会看到“新版本已发布”的提示，一键即可刷新（会重新下载所有文件，效果等同 Ctrl+Shift+R）；老访客再次访问时会看到一次更新内容。
 
 ### 费用估算
 

@@ -4,6 +4,7 @@ import { h, ThinkPanel, segmented, toast } from './ui.js';
 import { decide, pickAction, choiceAnswer, noulAnswer, normalize, getJevStatus, onJevStatus } from './engine.js';
 import { gameIcon, icons } from './icons.js';
 import { CONFIG } from './config.js';
+import { initUpdates } from './updates.js';
 
 import pd from './games/pd.js';
 import rps from './games/rps.js';
@@ -329,3 +330,4 @@ settings.onChange(rerender);
 window.addEventListener('hashchange', route);
 applyTheme();
 route();
+initUpdates();

@@ -164,6 +164,7 @@ export default {
       jevOffer = null;
       last = null;
       fresh = false;
+      panel.clearSealed();
       panel.waiting();
       update();
     }
@@ -212,7 +213,8 @@ export default {
       const pick = ctx.pickAction(res.answers?.offer, OFFERS);
       jevOffer = Number(pick);
       phase = 'respond';
-      panel.show(res, {
+      // Jev modes: its odds stay sealed until you've answered (they'd hint how low it can go).
+      panel.reveal(res, {
         question: 'offer',
         labels: () => Object.fromEntries(OFFERS.map((s) => [s, t('ultimatum.offerOf', { k: s })])),
         picked: pick,
@@ -225,6 +227,7 @@ export default {
     function respond(accepted) {
       if (phase !== 'respond' || !alive) return;
       record('jev', jevOffer, accepted);
+      panel.unseal();
       update();
     }
 
@@ -233,7 +236,7 @@ export default {
       round += 1;
       last = null;
       jevOffer = null;
-      panel.waiting();
+      // (the panel keeps the last read, e.g. the review of Jev's offer, until Jev thinks again)
       if (round % 2 === 0) jevPropose();
       else { phase = 'propose'; draft = 5; update(); }
     }
@@ -297,7 +300,7 @@ export default {
         const gain = last && fresh && (phase === 'reveal' || phase === 'done') && last.accepted ? (you ? last.gHuman : last.gJev) : null;
         return h('div.ug-tray', { class: `${who} ${isProp ? 'prop' : 'resp'}` },
           h('div.ug-tray-head',
-            h('span.ug-who', you ? t('you') : 'Jev', h('em', isProp ? t('ultimatum.propRole') : t('ultimatum.respRole'))),
+            h('span.ug-who', you ? t('you') : t('opp'), h('em', isProp ? t('ultimatum.propRole') : t('ultimatum.respRole'))),
             counts ? h('span.ug-count', h('small', label), h('b', { class: burned ? 'burned' : '' }, n)) : null),
           h('div.ug-dish', coins, gain !== null ? h('span.ug-gain', `+${gain}`) : null),
         );
@@ -393,10 +396,10 @@ export default {
           h('div.ug-round', h('small', t('round')), h('b', round), h('span', `/ ${TOTAL}`)),
           h('div.ug-roles', Array.from({ length: TOTAL }, (_, i) => h('span.ug-role', {
             class: `${i % 2 === 0 ? 'you' : 'jev'} ${i + 1 === round && !done ? 'now' : ''} ${i < history.length ? (history[i].accepted ? 'ok' : 'no') : ''}`,
-            title: `${i + 1}: ${t('ultimatum.proposer')} ${i % 2 === 0 ? t('you') : 'Jev'}`,
-          }, i % 2 === 0 ? t('you').slice(0, 1) : 'J'))),
+            title: `${i + 1}: ${t('ultimatum.proposer')} ${i % 2 === 0 ? t('you') : t('opp')}`,
+          }, i % 2 === 0 ? t('you').slice(0, 1) : t('opp').slice(0, 1)))),
         ),
-        h('div.ug-sc.jev', h('small', 'Jev'), h('div', h('b', score.jev), h('span.ug-sc-coin', { html: coinSvg() }))),
+        h('div.ug-sc.jev', h('small', t('opp')), h('div', h('b', score.jev), h('span.ug-sc-coin', { html: coinSvg() }))),
       );
     }
 
@@ -415,7 +418,7 @@ export default {
             const gj = r.accepted ? POT - youShare : 0;
             return h('tr', { class: `${r.accepted ? 'ok' : 'no'} ${fresh && i === history.length - 1 ? 'fresh' : ''}` },
               h('td.rn', i + 1),
-              h('td', h('span.ug-pdot', { class: humanProp ? 'you' : 'jev' }), humanProp ? t('you') : 'Jev'),
+              h('td', h('span.ug-pdot', { class: humanProp ? 'you' : 'jev' }), humanProp ? t('you') : t('opp')),
               h('td.split', h('span.ug-seg', Array.from({ length: POT }, (_, k) => h('i', { class: k < youShare ? 'y' : 'j' }))),
                 h('span.ug-seg-n', `${youShare} | ${POT - youShare}`)),
               h('td', h('span.ug-res', { class: r.accepted ? 'ok' : 'no', html: r.accepted ? ICON.ok : ICON.no }), h('span.ug-res-t', t(r.accepted ? 'ultimatum.acc' : 'ultimatum.rej'))),
@@ -462,7 +465,7 @@ export default {
     reset();
     return {
       render,
-      destroy() { alive = false; },
+      destroy() { alive = false; panel.clearSealed(); },
     };
   },
 };

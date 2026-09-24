@@ -78,8 +78,8 @@ export class ThinkPanel {
     fill(this.el, this.header(), h('div.think-loading', h('span.dot'), h('span.dot'), h('span.dot'), h('span', t('think.thinking'))));
   }
 
-  show(result, opts = {}) {
-    this.last = ['show', [result, opts]];
+  /** Build the body (bars, confidence, extras) for one decision. */
+  body(result, opts, { compact = false } = {}) {
     // labels/extras/title may be functions so they re-translate on language change
     const val = (x) => (typeof x === 'function' ? x() : x);
     const { question = 'action', picked } = opts;
@@ -100,17 +100,74 @@ export class ThinkPanel {
     const extraRows = extras.filter((x) => x.value != null).map((x) =>
       h('div.extra', h('span', x.label), h('div.mini-track', h('div.mini-fill', { style: { width: pct(x.value) } })), h('b', pct(x.value))),
     );
-    fill(this.el, 
-      this.header(result),
+    return [
       title ? h('div.think-q', title) : null,
       h('div.bars', rows),
-      ans?.confidence != null ? h('div.conf', t('think.confidence'), h('b', pct(ans.confidence))) : null,
+      !compact && ans?.confidence != null ? h('div.conf', t('think.confidence'), h('b', pct(ans.confidence))) : null,
       extraRows.length ? h('div.extras', extraRows) : null,
-      result.error ? h('div.fallback', t(`think.fallback.${result.error}`)) : null,
-    );
-    // animate bars in
+    ];
+  }
+
+  animate() {
     requestAnimationFrame(() => this.el.querySelectorAll('.bar-fill, .mini-fill').forEach((b) => b.classList.add('in')));
   }
+
+  show(result, opts = {}) {
+    this.last = ['show', [result, opts]];
+    fill(this.el,
+      this.header(result),
+      this.body(result, opts),
+      result.error ? h('div.fallback', t(`think.fallback.${result.error}`)) : null,
+    );
+    this.animate();
+  }
+
+  // ----- sealed decisions (hidden-information games) -----
+  // Against Jev, showing its odds mid-hand would leak its private cards/dice. Games call
+  // reveal(); in Jev modes the decision is sealed until the hand/round ends (unseal()).
+  // Practice mode shows everything immediately, as a teaching aid.
+
+  reveal(result, opts = {}) {
+    if (result.mode === 'practice') return this.show(result, opts);
+    (this.sealed ||= []).push([result, opts]);
+    this.sealedView();
+  }
+
+  sealedView() {
+    this.last = ['sealedView', []];
+    const n = this.sealed?.length || 0;
+    const lastRes = this.sealed?.[n - 1]?.[0];
+    fill(this.el,
+      this.header(lastRes),
+      h('div.sealed',
+        h('span.seal-ico', { html: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2.2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.3" fill="currentColor"/></svg>' }),
+        h('div', h('b', t('think.sealed.t')), h('p', t('think.sealed.b', { n })))),
+      lastRes?.error ? h('div.fallback', t(`think.fallback.${lastRes.error}`)) : null,
+    );
+  }
+
+  /** End of hand/round: show every sealed decision of this hand. */
+  unseal() {
+    const items = this.sealed || [];
+    this.sealed = [];
+    if (!items.length) return;
+    this.showMany(items);
+  }
+
+  /** Forget sealed decisions without showing them (e.g. new game). */
+  clearSealed() { this.sealed = []; }
+
+  showMany(items) {
+    this.last = ['showMany', [items]];
+    if (items.length === 1) { this.show(...items[0]); return; }
+    fill(this.el,
+      this.header(items[items.length - 1][0]),
+      h('div.think-q.review-head', t('think.review', { n: items.length })),
+      h('div.review', items.map(([res, opts], i) => h('div.review-step', h('span.step-no', i + 1), h('div', this.body(res, opts, { compact: true }))))),
+    );
+    this.animate();
+  }
+
 }
 
 export function toast(msg) {

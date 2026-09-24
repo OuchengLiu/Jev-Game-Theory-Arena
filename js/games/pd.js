@@ -181,7 +181,7 @@ export default {
       return h('div.pd-card', { class: `${side} ${busy && !you ? 'busy' : ''} ${fresh ? 'fresh' : ''}` },
         h('div.pd-av', { html: AVATAR[side] }),
         h('div.pd-card-body',
-          h('small.pd-name', you ? t('you') : 'Jev'),
+          h('small.pd-name', you ? t('you') : t('opp')),
           h('b.pd-score', score[you ? 0 : 1]),
           status,
         ),
@@ -219,7 +219,7 @@ export default {
       return h('figure.pd-panel.pd-matrix-wrap',
         h('figcaption.pd-cap', h('span', t('pd.matrix')), h('small', t('pd.matrixNote'))),
         h('div.pd-matrix', { role: 'table' },
-          h('div.pd-corner', h('span.you', t('you')), h('span.jev', 'Jev')),
+          h('div.pd-corner', h('span.you', t('you')), h('span.jev', t('opp'))),
           head('C', 'jev'), head('D', 'jev'),
           head('C', 'you'), cell('CC'), cell('CD'),
           head('D', 'you'), cell('DC'), cell('DD'),
@@ -273,7 +273,7 @@ export default {
       const empty = n ? '' : `<text class="pd-ax pd-empty" x="${(L + W - Rp) / 2}" y="${H / 2}" text-anchor="middle">${esc(t('pd.waiting'))}</text>`;
       return h('figure.pd-panel.pd-chart-wrap',
         h('figcaption.pd-cap', h('span', t('pd.chart')),
-          h('span.pd-legend', h('span.you', h('i'), t('you')), h('span.jev', h('i'), 'Jev'),
+          h('span.pd-legend', h('span.you', h('i'), t('you')), h('span.jev', h('i'), t('opp')),
             h('span.mk', svg(`<svg viewBox="0 0 12 12" aria-hidden="true">${mark('C', 6, 6, 3.6)}</svg>`), t('pd.cooperate')),
             h('span.mk', svg(`<svg viewBox="0 0 12 12" aria-hidden="true">${mark('D', 6, 6, 3.6)}</svg>`), t('pd.defect')))),
         svg(`<svg class="pd-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('pd.chart'))}">${g}${empty}${line(0, 'you')}${line(1, 'jev')}${dots(0, 'you')}${dots(1, 'jev')}${labels}</svg>`),
@@ -290,7 +290,7 @@ export default {
         h('div.pd-tl', { style: { '--n': TOTAL } },
           h('span'), ...Array.from({ length: TOTAL }, (_, i) => h('span.pd-tl-n', { class: i === n - 1 ? 'now' : '' }, i + 1)),
           ...row(t('you'), 'opp'),
-          ...row('Jev', 'jev'),
+          ...row(t('opp'), 'jev'),
           h('span.pd-tl-lab.pts', t('pd.points')),
           ...Array.from({ length: TOTAL }, (_, i) => {
             const r = history[i];
