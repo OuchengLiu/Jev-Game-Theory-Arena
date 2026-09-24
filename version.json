@@ -1,20 +1,12 @@
 {
-  "version": "1.2.1",
+  "version": "1.2.2",
   "date": "2026-09-24",
   "notes": {
     "en": [
-      "Insights: small samples are now shown (faded) instead of hidden, so Jev's data appears alongside people's",
-      "Insights: new version filter; by default only each game's current version is counted",
-      "Insights: the human series now counts only games played against Jev",
-      "More accurate statistics: moves made by the stand-in practice bot are no longer counted as Jev's, and an all-in call no longer counts as aggression",
-      "Jev's calibration in Hold'em is now checked on every decision, not only at showdown"
+      "Hold'em: Jev now waits for the cards to be dealt before its first move, so a quick pre-flop fold no longer looks like cards flashing by"
     ],
     "zh": [
-      "数据洞察：样本较少的数据改为浅色显示而不是隐藏，Jev 的数据会和人类的一起出现",
-      "数据洞察：新增版本筛选，默认只统计各游戏的当前版本",
-      "数据洞察：“人类”系列现在只统计和 Jev 对战的对局",
-      "统计更准确：临时顶替的练习机器人的出招不再算作 Jev 的；德州里全下跟注不再算作激进动作",
-      "德州里 Jev 的校准度改为每次决策都核对，不再只在摊牌时核对"
+      "德州：Jev 会等发牌动画结束后再做第一次行动，开局直接弃牌时不再像是牌一闪而过"
     ]
   }
 }

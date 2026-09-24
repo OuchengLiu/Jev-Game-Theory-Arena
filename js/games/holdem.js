@@ -371,7 +371,10 @@ export default {
       }
       if (!alive || g !== gen) return;
       const spent = performance.now() - t0;
-      if (spent < 800) await wait(800 - spent); // let the deal animation breathe
+      // Let the deal animation finish before Jev's first move of a hand (otherwise an instant
+      // pre-flop fold looks like a fresh deal flashing by); later moves need less time.
+      const minThink = cur.history.length === 0 ? 1500 : 800;
+      if (spent < minThink) await wait(minThink - spent);
       if (!alive || g !== gen) return;
       const id = ctx.pickAction(res.answers?.action, ids);
       const o = opts.find((x) => x.id === id) || opts[0];
