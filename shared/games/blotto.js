@@ -2,9 +2,16 @@
 // Each round both players secretly split 10 soldiers across three battlefields
 // (Ridge, Ford, Fort). More soldiers takes a field; more fields takes the round.
 //
-// Hinted mode: the browser (js/games/blotto-core.js) estimates how every split fares
-// against the opponent's past splits and sends a shortlist with a semantic outlook word
-// for each, plus tendency words. Raw mode: only the rules, the record and all 66 splits.
+// Clean ablation (see shared/prompts.js): base() builds the Raw request from the record
+// (rules, neutral goal, round, score, full history, all 66 splits). Hinted = that identical
+// base + `state.analysis` (opponent tendency words, what the estimates are based on) + an
+// " Analysis: …" outlook suffix on each option. The browser (js/games/blotto-core.js)
+// computes the estimates; the hinted payload is the raw record + basis/tendencies/candidates.
+//
+// NOTE: the option SET differs by design. Hinted offers only the shortlist of <= 16
+// candidates (the 10 best estimates plus the best split of other shapes); Raw offers all 66.
+// The shortlist itself is part of the hinted assistance. Every hinted option id is one of
+// the raw ids, and its criteria text starts with exactly the raw criteria text.
 //
 // Allocations travel as ids like "a5-3-2" (Ridge-Ford-Fort). The enum of all 66 legal
 // ids doubles as the "must sum to 10" check: no other id passes the schema.
@@ -50,10 +57,9 @@ const RAW_SCHEMA = S.obj({
   history: S.list(ROUND, 14),
 });
 
+// Hinted payload = the raw record + the code-computed analysis fields.
 const SCHEMA = S.obj({
-  round: S.int(1, 15),
-  total: S.int(1, 15),
-  history: S.list(ROUND, 14),
+  ...RAW_SCHEMA.fields,
   basis: S.enumv(BASES),
   tendencies: S.list(S.enumv(TENDENCIES), 6),
   candidates: S.list(S.obj({ id: ALLOC, outlook: S.enumv(OUTLOOKS) }), MAX_CANDIDATES),
@@ -117,36 +123,35 @@ function tally(history) {
   return s;
 }
 
-function roundLine(r, i, detailed) {
+function roundLine(r, i) {
   const a = parseAlloc(r.jev);
   const b = parseAlloc(r.opp);
   const res = roundResult(a, b);
   const verdict = res > 0 ? 'you won the round' : res < 0 ? 'the opponent won the round' : 'the round was a draw';
-  let line = `Round ${i + 1}: you ${splitText(a)}; opponent ${splitText(b)}`;
-  if (detailed) {
-    const fields = fieldResults(a, b).map((f, k) => `${FIELDS[k]} ${f > 0 ? 'won by you' : f < 0 ? 'won by the opponent' : 'tied'}`);
-    line += `. ${fields.join('; ')}`;
-  }
-  return `${line}. Result: ${verdict}.`;
+  const fields = fieldResults(a, b).map((f, k) => `${FIELDS[k]} ${f > 0 ? 'won by you' : f < 0 ? 'won by the opponent' : 'tied'}`);
+  return `Round ${i + 1}: you ${splitText(a)}; opponent ${splitText(b)}. ${fields.join('; ')}. Result: ${verdict}.`;
 }
 
 function scoreText(s) {
   return `Rounds won so far: you ${s.you}, opponent ${s.opp}; drawn rounds ${s.draws}.`;
 }
 
-// ---------- Raw mode: the bare record and all 66 splits ----------
-function buildRaw(p) {
+const optionText = (x) => `${splitText(x)}.`;
+
+/** Shared base: rules, neutral goal, round, score, full record, all 66 literal splits. */
+function base(p) {
   checkRounds(p);
   const { round, total, history } = p;
   const criteria = {};
-  for (const x of ALLOCS) criteria[allocId(x)] = splitText(x);
+  for (const x of ALLOCS) criteria[allocId(x)] = optionText(x);
   return {
     state: {
-      game: `Colonel Blotto, a ${total}-round match against one opponent. Whoever wins more rounds wins the match.`,
+      game: `Colonel Blotto, a ${total}-round match against one opponent.`,
       rules: RULES,
+      goal: 'Win the match: win more rounds than the opponent.',
       round: `Round ${round} of ${total}.`,
       score: scoreText(tally(history)),
-      history: history.length ? history.map((r, i) => roundLine(r, i, true)) : ['No rounds played yet.'],
+      history: history.length ? history.map((r, i) => roundLine(r, i)) : ['No rounds played yet.'],
     },
     questions: {
       action: {
@@ -162,54 +167,27 @@ function buildRaw(p) {
   };
 }
 
-// ---------- Hinted mode: code-computed outlooks as words ----------
-function build(p) {
-  checkRounds(p);
-  const { round, total, history, basis, tendencies, candidates } = p;
+const RAW_FIELDS = ['round', 'total', 'history'];
+
+function hinted(p) {
+  const { tendencies, candidates, basis } = p;
   if (!candidates.length) throw new SchemaError('payload.candidates: empty');
   const ids = new Set(candidates.map((c) => c.id));
   if (ids.size !== candidates.length) throw new SchemaError('payload.candidates: duplicate id');
   if (new Set(tendencies).size !== tendencies.length) throw new SchemaError('payload.tendencies: duplicate');
-
-  const s = tally(history);
-  const left = total - round;
-  const lead = s.you - s.opp;
-  const situation = [
-    left === 0 ? 'This is the FINAL round.' : left === 1 ? 'One round remains after this one.' : `${left} rounds remain after this one.`,
-    lead === 0 ? 'The match is level.' : lead > 0 ? `You lead the match by ${plural(lead, 'round')}.` : `You trail the match by ${plural(-lead, 'round')}.`,
-  ].join(' ');
-  const recent = history.slice(-3);
-
+  const req = base(Object.fromEntries(RAW_FIELDS.map((k) => [k, p[k]])));
+  const all = req.questions.action.criteria;
   const criteria = {};
   for (const c of candidates) {
-    criteria[c.id] = `${splitText(parseAlloc(c.id))}. Against this opponent's likely splits it ${WORDS.outlook[c.outlook]}.`;
+    criteria[c.id] = `${all[c.id]} Analysis: against the opponent's likely splits it ${WORDS.outlook[c.outlook]}.`;
   }
-
-  return {
-    state: {
-      game: `Colonel Blotto, a ${total}-round match against one opponent. Whoever wins more rounds wins the match.`,
-      rules: RULES,
-      theory: 'There is no single best split: every fixed split can be beaten by another. A predictable player gets countered, so mix your choices and exploit the opponent’s habits only as far as they are reliable.',
-      round: `Round ${round} of ${total}. ${scoreText(s)}`,
-      situation,
-      opponent_tendencies: tendencies.length ? tendencies.map((k) => WORDS.tendency[k]) : ['No clear pattern yet.'],
-      estimates: WORDS.basis[basis],
-      recent_rounds: recent.length
-        ? recent.map((r, i) => roundLine(r, history.length - recent.length + i, false))
-        : ['No rounds played yet.'],
-    },
-    questions: {
-      action: {
-        type: 'choice',
-        instructions: 'Which split of your 10 soldiers across the Ridge, the Ford and the Fort gives you the best chance to win this round? Each option states the split and how it fares against the opponent’s likely splits.',
-        criteria,
-      },
-      opp_stacks: {
-        type: 'noul',
-        instructions: 'Will the opponent put 5 or more soldiers on a single battlefield this round?',
-      },
-    },
+  req.questions.action.criteria = criteria;
+  req.state.analysis = {
+    options: `The options are a shortlist of ${plural(candidates.length, 'split')} out of all 66, chosen by code: the splits with the best estimated results plus the best split of each other shape.`,
+    estimates: WORDS.basis[basis],
+    opponent_tendencies: tendencies.length ? tendencies.map((k) => WORDS.tendency[k]) : ['No clear pattern yet.'],
   };
+  return req;
 }
 
-export default { schema: SCHEMA, build, raw: { schema: RAW_SCHEMA, build: buildRaw } };
+export default { schema: SCHEMA, build: hinted, raw: { schema: RAW_SCHEMA, build: base } };

@@ -57,7 +57,7 @@ function cupSvg(id, open) {
 
 export default {
   id: 'liarsdice',
-  meta: { icon: '🎲', accent: '#c9a45c', minutes: 6, version: '1.1' },
+  meta: { icon: '🎲', accent: '#c9a45c', minutes: 6, version: '1.3' },
   strings: {
     en: {
       title: 'Liar’s Dice',
@@ -165,6 +165,7 @@ export default {
     const at = (since, delay = 0, extra) => ({ animationDelay: `${Math.round(delay - (now() - since))}ms`, ...extra });
 
     let dice, bids, phase, turn, busy, pick, reveal, stats, starter, roundNo, log;
+    let bluffCal = []; // this round's Jev 'opp_bluffing' judgements: { res, p, bid } (telemetry)
     let rollAt = 0, bidAt = 0;
 
     const total = () => dice.you.length + dice.jev.length;
@@ -210,7 +211,7 @@ export default {
       timers.clear();
       dice = { you: rollDice(START_DICE), jev: rollDice(START_DICE) };
       stats = { honest: 0, bluff: 0 }; // how truthful the human's bids have been (Jev's view)
-      log = []; // finished rounds, for the raw-mode record
+      log = []; // finished rounds, for Jev's record of earlier rounds (both modes)
       roundNo = 0;
       reviewing = false;
       panel.clearSealed();
@@ -227,13 +228,14 @@ export default {
       starter = who;
       busy = false;
       reveal = null;
+      bluffCal = [];
       rollAt = now();
       pick = defaultPick();
       render();
       if (who === 'jev') jevTurn();
     }
 
-    // Earlier rounds from Jev's point of view (raw mode).
+    // Earlier rounds from Jev's point of view (sent in both modes).
     const jevView = (by) => (by === 'jev' ? 'jev' : 'opp');
     const pastForJev = () => log.map((r) => ({
       bid: { by: jevView(r.bid.by), qty: r.bid.qty, face: r.bid.face },
@@ -253,8 +255,10 @@ export default {
       if (!alive || g !== gen) return;
       const view = bids.map((b) => ({ by: jevView(b.by), qty: b.qty, face: b.face }));
       const cur = current();
-      const hinted = makePayload(dice.jev, dice.you.length, view, stats);
-      const raw = makeRawPayload(dice.jev, dice.you.length, view, pastForJev());
+      // Hinted payload = the raw record + code-computed likelihoods / style (same options).
+      const past = pastForJev();
+      const hinted = makePayload(dice.jev, dice.you.length, view, stats, past);
+      const raw = makeRawPayload(dice.jev, dice.you.length, view, past);
       const res = await ctx.decide('liarsdice', (mode) => (mode === 'raw' ? raw.payload : hinted.payload), localBot);
       if (!alive || g !== gen) return;
       // The practice bot always answers the hinted payload; Jev answers whichever it was sent.
@@ -267,6 +271,8 @@ export default {
       if (!shown.includes(id)) shown[shown.length - 1] = id;
       shown.sort((a, b) => (probs[b] || 0) - (probs[a] || 0));
       reviewing = false;
+      const pBluff = res.answers?.opp_bluffing?.noul;
+      if (cur && typeof pBluff === 'number') bluffCal.push({ res, p: pBluff, bid: { qty: cur.qty, face: cur.face } });
       panel.reveal(res, {
         labels: () => Object.fromEntries(shown.map((k) => [k, optionMap[k].type === 'challenge' ? L('liar') : bidLabel(optionMap[k])])),
         picked: id,
@@ -310,6 +316,9 @@ export default {
       const loser = bidTrue ? challenger : bid.by;
       const call = { ph: 'raise', act: 'liar', x: bidTrue ? 'wrong' : 'right' };
       if (challenger === 'jev') track('opp', res, call); else track('human', call);
+      // Calibration: each human bid Jev judged — was it actually false (1s wild)?
+      for (const c of bluffCal) track('cal', c.res, { ph: 'opp_bluffing', p: c.p, truth: countFace(all, c.bid.face) < c.bid.qty });
+      bluffCal = [];
       if (dice[loser].length - 1 <= 0) track('end', loser === 'jev' ? 'win' : 'lose');
       stats = recordBids(stats, bids, 'you', all);
       log.push({ bid: { ...bid }, caller: challenger, actual: count, loser, youDice: [...dice.you] });

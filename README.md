@@ -21,7 +21,7 @@ Free · No sign-up · English / 中文 · Desktop & mobile
 
 [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev) is a new kind of AI model from TypeSafe AI. It doesn't chat. You give it a situation and a list of options, and it gives each option a probability.
 
-That's exactly what a game-theory player needs. In poker, a bluff only works if it *might* happen, so the best strategies are often random. Jev's probabilities are such a **mixed strategy**. It picks its move by drawing from them, and after every move you can see the full distribution: where it's confident, where it hesitates, and where you can exploit it.
+That makes it an interesting game-theory player. After each round you can see its full probability distribution: where it's confident, where it hesitates, and where you can exploit it. Each visit is randomly assigned how Jev turns those probabilities into a move: **Top pick** (always its highest-rated move) or **By odds** (drawn in proportion to its probabilities).
 
 ### Six games
 
@@ -69,7 +69,7 @@ Ideas, bug reports and new games are welcome. Please open an issue or a pull req
 
 [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev) 是 TypeSafe AI 推出的一种新型 AI 模型。它不聊天：给它一个局面和一组选项，它会为每个选项给出一个概率。
 
-这正是博弈论玩家需要的能力。在扑克里，诈唬必须*有可能*发生才管用，所以最好的策略往往带有随机性。Jev 给出的概率就是这样一个**混合策略**。它按这些概率抽取出招，每一步之后你都能看到完整的概率分布：它哪里有把握、哪里在犹豫、哪里能被你利用。
+这让它成为一个很有意思的博弈对手：每一轮结束后你都能看到它完整的概率分布，知道它哪里有把握、哪里在犹豫、哪里能被你利用。Jev 怎么把概率变成出招，会在每次访问时随机分配：**取最高**（总是出概率最高的那一招）或**按概率**（按它给出的概率按比例抽取）。
 
 ### 六款游戏
 

@@ -1,4 +1,9 @@
 // Iterated Prisoner's Dilemma — Jev plays one side.
+//
+// Clean ablation (see shared/prompts.js): base() builds the Raw request from the record;
+// the Hinted request is that identical base plus one `state.analysis` object with the
+// code-computed facts (opponent tendency bucket, rounds remaining). No option carries an
+// analysis suffix here: nothing is computed per option. Both modes take the same payload.
 import { S, SchemaError } from '../schema.js';
 
 const MOVE = S.enumv('C', 'D');
@@ -18,10 +23,11 @@ const PAYOFF_WORDS = {
   you_cooperate_they_defect: 'you get 0, they get 5',
 };
 
-// ---------- Raw mode: the bare record, no tendencies or advice ----------
-function buildRaw({ round, total, history }) {
+const word = (m) => (m === 'C' ? 'cooperated' : 'defected');
+
+/** Shared base: rules, neutral goal, round, score, full record, literal options. */
+function base({ round, total, history }) {
   if (round > total || round !== history.length + 1) throw new SchemaError('payload.round: inconsistent with history');
-  const word = (m) => (m === 'C' ? 'cooperated' : 'defected');
   let you = 0;
   let opp = 0;
   const rounds = history.map((h, i) => {
@@ -30,21 +36,20 @@ function buildRaw({ round, total, history }) {
     opp += b;
     return `Round ${i + 1}: you ${word(h.jev)}, opponent ${word(h.opp)}; you got ${a}, opponent got ${b}.`;
   });
-  const state = {
-    game: "Iterated Prisoner's Dilemma between you and one opponent. Each round both players choose at the same time without seeing the other's choice.",
-    payoffs: PAYOFF_WORDS,
-    goal: 'Maximise YOUR total points over all rounds.',
-    round: `Round ${round} of ${total}.`,
-    history: rounds.length ? rounds : ['No rounds played yet.'],
-    score: { you, opponent: opp },
-  };
   return {
-    state,
+    state: {
+      game: "Iterated Prisoner's Dilemma between you and one opponent. Each round both players choose at the same time without seeing the other's choice.",
+      payoffs: PAYOFF_WORDS,
+      goal: 'Maximise your total points over all rounds.',
+      round: `Round ${round} of ${total}.`,
+      score: { you, opponent: opp },
+      history: rounds.length ? rounds : ['No rounds played yet.'],
+    },
     questions: {
       action: {
         type: 'choice',
         instructions: 'Which move do you play this round?',
-        criteria: { cooperate: 'Cooperate', defect: 'Defect' },
+        criteria: { cooperate: 'Cooperate.', defect: 'Defect.' },
       },
       opp_will_cooperate: {
         type: 'noul',
@@ -54,50 +59,27 @@ function buildRaw({ round, total, history }) {
   };
 }
 
+function hinted(p) {
+  const req = base(p);
+  const { round, total, history } = p;
+  const oppC = history.filter((h) => h.opp === 'C').length;
+  const n = history.length;
+  const rate = n ? oppC / n : null;
+  const bucket = rate === null ? 'unknown (no rounds played yet)'
+    : rate >= 0.8 ? 'almost always cooperates'
+    : rate >= 0.55 ? 'mostly cooperates'
+    : rate >= 0.3 ? 'mixed, often defects'
+    : 'almost always defects';
+  const left = total - round;
+  req.state.analysis = {
+    opponent_tendency: n ? `${bucket} (cooperated in ${oppC} of ${n} rounds)` : bucket,
+    rounds_remaining: left === 0 ? 'This is the final round.' : `${left} round${left === 1 ? '' : 's'} remain after this one.`,
+  };
+  return req;
+}
+
 export default {
   schema: SCHEMA,
-  raw: { schema: SCHEMA, build: buildRaw },
-
-  build({ round, total, history }) {
-    const word = (m) => (m === 'C' ? 'cooperated' : 'defected');
-    const recent = history.slice(-12);
-    const oppC = history.filter((h) => h.opp === 'C').length;
-    const rate = history.length ? oppC / history.length : null;
-    const bucket = rate === null ? 'unknown (first round)'
-      : rate >= 0.8 ? 'almost always cooperates'
-      : rate >= 0.55 ? 'mostly cooperates'
-      : rate >= 0.3 ? 'mixed, often defects'
-      : 'almost always defects';
-    const left = Math.max(0, total - round);
-
-    const state = {
-      game: "Iterated Prisoner's Dilemma between you and one opponent.",
-      payoffs: PAYOFF_WORDS,
-      goal: 'Maximise YOUR total points over all rounds.',
-      round_status: left === 0 ? 'This is the FINAL round; there is no future to protect.'
-        : left <= 2 ? `Only ${left} round(s) remain after this one.`
-        : 'Many rounds remain; reputation matters.',
-      opponent_tendency: bucket,
-      opponent_last_move: history.length ? word(history[history.length - 1].opp) : 'none yet',
-      recent_rounds: recent.map((h, i) => `Round ${history.length - recent.length + i + 1}: you ${word(h.jev)}, opponent ${word(h.opp)}`),
-    };
-
-    return {
-      state,
-      questions: {
-        action: {
-          type: 'choice',
-          instructions: 'Which move should you play this round to maximise your own total score?',
-          criteria: {
-            cooperate: 'Cooperate: build or keep mutual trust; best when the opponent reciprocates cooperation.',
-            defect: 'Defect: exploit or punish; best when the opponent defects, or when no future rounds remain.',
-          },
-        },
-        opp_will_cooperate: {
-          type: 'noul',
-          instructions: 'Will the opponent cooperate this round?',
-        },
-      },
-    };
-  },
+  build: hinted,
+  raw: { schema: SCHEMA, build: base },
 };

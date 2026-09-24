@@ -1,8 +1,10 @@
 // Rock-Paper-Scissors, "predict the human". Jev never picks its own throw:
 // it only predicts the human's next throw; code turns that into a counter-strategy.
 //
-// All pattern mining (frequencies, win-stay / lose-shift habits, sequences) happens
-// here in code and is handed to Jev as plain words and ready-made "clues".
+// Clean ablation (see shared/prompts.js): base() builds the Raw request from the record;
+// Hinted = that identical base + `state.analysis` (pattern mining done here in code:
+// favourite throw, win-stay / lose-shift habits, sequences, clues) + an " Analysis: …"
+// suffix on each throw saying which clues point to it. Both modes take the same payload.
 import { S, SchemaError } from '../schema.js';
 
 export const THROWS = ['rock', 'paper', 'scissors'];
@@ -68,8 +70,6 @@ export function analyze(history) {
   return { n, counts, favorite: fav.key, favoriteStrength, habits, habitCounts, overall, last, suggestions, seq };
 }
 
-const cap = (s) => s[0].toUpperCase() + s.slice(1);
-
 function habitWords(hb) {
   if (hb.total < 2) return 'not enough data yet';
   if (!hb.key) return 'no clear habit';
@@ -82,8 +82,8 @@ const SCHEMA = S.obj({
   history: S.list(S.obj({ human: THROW, jev: THROW, outcome: OUTCOME }), 20),
 });
 
-// ---------- Raw mode: the bare record, no frequencies, habits or clues ----------
-function buildRaw({ round, total, history }) {
+/** Shared base: rules, neutral goal, round, score, full record, literal options. */
+function base({ round, total, history }) {
   if (round > total || round !== history.length + 1) throw new SchemaError('payload.round: inconsistent with history');
   const score = { opponent_round_wins: 0, your_round_wins: 0, draws: 0 };
   const words = { human_won: 'the opponent won', jev_won: 'you won', draw: 'draw' };
@@ -92,78 +92,63 @@ function buildRaw({ round, total, history }) {
     score[r.outcome === 'human_won' ? 'opponent_round_wins' : r.outcome === 'jev_won' ? 'your_round_wins' : 'draws'] += 1;
     return `Round ${i + 1}: opponent threw ${r.human}, you threw ${r.jev}; ${words[r.outcome]}.`;
   });
-  const state = {
-    game: 'Rock-paper-scissors against a human opponent. Rock beats scissors, scissors beats paper, paper beats rock; the same throw is a draw.',
-    your_task: 'Predict the opponent\'s NEXT throw. Both throw at the same time; your prediction is used to pick your counter-throw.',
-    round: `Round ${round} of ${total}.`,
-    history: rounds.length ? rounds : ['No rounds played yet.'],
-    score,
-  };
   return {
-    state,
+    state: {
+      game: 'Rock-paper-scissors against a human opponent. Rock beats scissors, scissors beats paper, paper beats rock; the same throw is a draw. Both players throw at the same time.',
+      goal: "Predict the opponent's next throw. Your prediction is used to pick your counter-throw.",
+      round: `Round ${round} of ${total}.`,
+      score,
+      history: rounds.length ? rounds : ['No rounds played yet.'],
+    },
     questions: {
       predict: {
         type: 'choice',
         instructions: 'Which throw will the opponent play next round?',
-        criteria: Object.fromEntries(THROWS.map((x) => [x, `The opponent will throw ${x}`])),
+        criteria: Object.fromEntries(THROWS.map((x) => [x, `The opponent throws ${x} next round.`])),
       },
       patterned: {
         type: 'noul',
-        instructions: 'Does the opponent\'s play follow a pattern that could be exploited, rather than looking random?',
+        instructions: "Does the opponent's play follow a pattern that could be exploited, rather than looking random?",
       },
     },
   };
 }
 
+function hinted(p) {
+  const req = base(p);
+  const a = analyze(p.history);
+  const s = a.suggestions;
+  const clues = [];
+  const pointers = Object.fromEntries(THROWS.map((x) => [x, []]));
+  const add = (x, text, short) => { if (x) { clues.push(`${text}: ${x}`); pointers[x].push(short); } };
+  add(s.habit, 'Their habit after the last result points to', 'their habit after the last result');
+  if (s.sequence) add(s.sequence, `After throwing ${a.last.human}, they most often throw next`, `their usual throw after ${a.last.human}`);
+  if (s.overall !== s.habit) add(s.overall, 'Their general switching style points to', 'their general switching style');
+  add(s.frequency, 'Their favourite throw overall is', 'their favourite throw overall');
+
+  const favWords = a.n < 4 ? 'not enough data yet'
+    : a.favoriteStrength === 'strong' ? `${a.favorite} (strongly favoured)`
+    : a.favoriteStrength === 'slight' ? `${a.favorite} (slightly favoured)`
+    : 'no favourite; throws are fairly balanced';
+
+  req.state.analysis = {
+    throw_counts: a.counts,
+    opponent_favourite_throw: favWords,
+    habit_after_opponent_wins: habitWords(a.habits.won),
+    habit_after_opponent_loses: habitWords(a.habits.lost),
+    habit_after_draw: habitWords(a.habits.draw),
+    clues_for_next_throw: clues.length ? clues : ['No clue found yet; the play so far shows no detected pattern.'],
+  };
+  const crit = req.questions.predict.criteria;
+  for (const x of THROWS) {
+    const list = pointers[x];
+    crit[x] += ` Analysis: ${list.length ? `pointed to by ${list.join(' and by ')}` : 'no clue points to this throw'}.`;
+  }
+  return req;
+}
+
 export default {
   schema: SCHEMA,
-  raw: { schema: SCHEMA, build: buildRaw },
-
-  build({ round, total, history }) {
-    const a = analyze(history);
-    const resultWord = { human_won: 'the human won', jev_won: 'you won', draw: 'draw' };
-
-    const clues = [];
-    const s = a.suggestions;
-    if (s.habit) clues.push(`Their habit after the last result points to: ${s.habit}`);
-    if (s.sequence) clues.push(`After throwing ${a.last.human}, they most often throw next: ${s.sequence}`);
-    if (s.overall && s.overall !== s.habit) clues.push(`Their general switching style points to: ${s.overall}`);
-    if (s.frequency) clues.push(`Their favourite throw overall is: ${s.frequency}`);
-
-    const favWords = a.n < 4 ? 'not enough data yet'
-      : a.favoriteStrength === 'strong' ? `${a.favorite} (strongly favoured)`
-      : a.favoriteStrength === 'slight' ? `${a.favorite} (slightly favoured)`
-      : 'no favourite; throws are fairly balanced';
-
-    const recent = history.slice(-10);
-    const state = {
-      game: 'Rock-paper-scissors against a human. Rock beats scissors, scissors beats paper, paper beats rock.',
-      your_task: 'Predict the human\'s NEXT throw. The human cannot see your throw in advance. Your prediction is used to pick a counter-throw.',
-      round_status: `Round ${round} of ${total}.`,
-      rounds_played: a.n === 0 ? 'none yet (first round)' : a.n < 5 ? 'only a few' : 'several',
-      human_last_throw: a.last ? a.last.human : 'none yet',
-      last_round_result: a.last ? resultWord[a.last.outcome] : 'none yet',
-      human_favourite_throw: favWords,
-      habit_after_human_wins: habitWords(a.habits.won),
-      habit_after_human_loses: habitWords(a.habits.lost),
-      habit_after_draw: habitWords(a.habits.draw),
-      clues_for_next_throw: clues.length ? clues : ['No reliable clue yet; the human\'s play looks random so far.'],
-      recent_rounds: recent.map((r, i) => `Round ${history.length - recent.length + i + 1}: human ${r.human}, you ${r.jev} (${resultWord[r.outcome]})`),
-    };
-
-    return {
-      state,
-      questions: {
-        predict: {
-          type: 'choice',
-          instructions: 'Which throw will the human play next round? Weigh the clues. If the human looks random, spread probability evenly.',
-          criteria: Object.fromEntries(THROWS.map((x) => [x, `The human throws ${cap(x)} next round.`])),
-        },
-        patterned: {
-          type: 'noul',
-          instructions: 'Does the human\'s play follow a noticeable pattern that could be exploited, rather than looking random?',
-        },
-      },
-    };
-  },
+  build: hinted,
+  raw: { schema: SCHEMA, build: base },
 };

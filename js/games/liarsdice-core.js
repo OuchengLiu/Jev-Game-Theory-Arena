@@ -12,7 +12,6 @@ export const MAX_BID_OPTIONS = 10;
 export const BID_IDS = Array.from({ length: MAX_BID_OPTIONS }, (_, i) => `b${i}`);
 export const LIKELIHOODS = ['certain', 'very_likely', 'likely', 'coin_flip', 'unlikely', 'very_unlikely', 'impossible'];
 export const STYLES = ['unknown', 'honest', 'bluffs_sometimes', 'bluffs_often'];
-export const HISTORY_MAX = 12; // bids sent to Jev per round (most recent)
 
 export const rollDice = (n, rng = Math.random) => Array.from({ length: n }, () => 1 + Math.floor(rng() * 6));
 
@@ -125,39 +124,9 @@ export function resolveChallenge(allDice, bid) {
 }
 
 /**
- * Build the compact Jev payload (see shared/games/liarsdice.js) from one player's view.
- * `bids`: this round's bids in order, each {by:'jev'|'opp', qty, face}, from that player's view
- * (the last one, if any, is the current bid and must be the opponent's).
- * Returns { payload, optionMap } where optionMap maps option id -> {type:'bid', qty, face} | {type:'challenge'}.
- */
-export function makePayload(ownDice, oppCount, bids, oppStats) {
-  const current = bids.length ? bids[bids.length - 1] : null;
-  const earlier = bids.slice(0, -1).slice(-HISTORY_MAX);
-  const optionMap = {};
-  const options = [];
-  if (current) {
-    options.push({ id: 'challenge' });
-    optionMap.challenge = { type: 'challenge' };
-  }
-  candidateBids(ownDice, oppCount, current).forEach((b, i) => {
-    const id = BID_IDS[i];
-    options.push({ id, qty: b.qty, face: b.face, likelihood: bucket(ownDice, oppCount, b) });
-    optionMap[id] = { type: 'bid', qty: b.qty, face: b.face };
-  });
-  const payload = {
-    jev_dice: [...ownDice].sort((a, b) => a - b),
-    opp_dice_count: oppCount,
-    history: earlier.map((b) => ({ by: b.by, qty: b.qty, face: b.face })),
-    opp_style: styleBucket(oppStats),
-    options,
-  };
-  if (current) payload.current_bid = { qty: current.qty, face: current.face, likelihood: bucket(ownDice, oppCount, current) };
-  return { payload, optionMap };
-}
-
-/**
  * Raw-mode candidates: purely rule-based, no probabilities. For every face the smallest
  * legal quantity, then (if room remains) one more than that. At most MAX_BID_OPTIONS.
+ * (Not used for Jev's options — both modes share candidateBids — kept for tests/tools.)
  */
 export function rawCandidateBids(current, totalDice) {
   const first = [];
@@ -172,9 +141,10 @@ export function rawCandidateBids(current, totalDice) {
 
 /**
  * Raw-mode Jev payload (see shared/games/liarsdice.js `raw`): the raw record only.
- * `bids`: this round's bids in order from Jev's view ({by:'jev'|'opp', qty, face}).
+ * `bids`: this round's bids in order from Jev's view ({by:'jev'|'opp', qty, face}); the last
+ * one, if any, is the current bid and must be the opponent's.
  * `pastRounds`: [{ bid:{by,qty,face}, called_by, actual, loser, opp_dice }] from Jev's view.
- * Returns { payload, optionMap } like makePayload.
+ * Returns { payload, optionMap } where optionMap maps option id -> {type:'bid', qty, face} | {type:'challenge'}.
  */
 export function makeRawPayload(ownDice, oppCount, bids, pastRounds = []) {
   const current = bids.length ? bids[bids.length - 1] : null;
@@ -184,8 +154,8 @@ export function makeRawPayload(ownDice, oppCount, bids, pastRounds = []) {
     options.push({ id: 'challenge' });
     optionMap.challenge = { type: 'challenge' };
   }
-  // Same candidate set as hinted mode, so the two modes differ only in what Jev is told
-  // (raw sees no likelihoods), not in which moves it may make.
+  // Same candidate set in both modes, so the modes differ only in what Jev is told,
+  // not in which moves it may make.
   candidateBids(ownDice, oppCount, current).forEach((b, i) => {
     const id = BID_IDS[i];
     options.push({ id, qty: b.qty, face: b.face });
@@ -207,6 +177,23 @@ export function makeRawPayload(ownDice, oppCount, bids, pastRounds = []) {
   return { payload, optionMap };
 }
 
+/**
+ * Hinted-mode Jev payload (see shared/games/liarsdice.js): exactly the raw payload plus the
+ * code-computed analysis fields — a likelihood bucket per bid option, the current bid's
+ * likelihood and the opponent's bluffing style. Same option ids / optionMap as the raw one.
+ */
+export function makePayload(ownDice, oppCount, bids, oppStats, pastRounds = []) {
+  const { payload: raw, optionMap } = makeRawPayload(ownDice, oppCount, bids, pastRounds);
+  const current = bids.length ? bids[bids.length - 1] : null;
+  const payload = {
+    ...raw,
+    options: raw.options.map((o) => (o.id === 'challenge' ? { ...o } : { ...o, likelihood: bucket(ownDice, oppCount, o) })),
+    opp_style: styleBucket(oppStats),
+  };
+  if (current) payload.current_likelihood = bucket(ownDice, oppCount, current);
+  return { payload, optionMap };
+}
+
 // ---------------- built-in bot (weights only; the UI wraps them in API shape) ----------------
 
 const VAL = { certain: 1, very_likely: 0.9, likely: 0.72, coin_flip: 0.5, unlikely: 0.28, very_unlikely: 0.1, impossible: 0 };
@@ -216,7 +203,8 @@ const VAL = { certain: 1, very_likely: 0.9, likely: 0.72, coin_flip: 0.5, unlike
  * Returns { action: {id: weight}, oppBluff: probability }.
  */
 export function botWeights(payload) {
-  const { options, current_bid: cur, opp_style: style } = payload;
+  const { options, opp_style: style } = payload;
+  const cur = payload.current_likelihood ? { likelihood: payload.current_likelihood } : null;
   const bids = options.filter((o) => o.id !== 'challenge');
   const lowest = bids.length ? Math.min(...bids.map((o) => o.qty)) : 0;
   const w = {};

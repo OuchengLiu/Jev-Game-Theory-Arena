@@ -119,14 +119,15 @@ export function makePayloads(history, total = ROUNDS) {
   const picks = shortlist(scores);
   const wire = history.map((r) => ({ jev: allocId(r.jev), opp: allocId(r.opp) }));
   const round = history.length + 1;
+  const raw = { round, total, history: wire };
+  // Hinted payload = the same raw record + the code-computed analysis fields.
   const hinted = {
-    round, total,
-    history: wire,
+    ...raw,
+    history: wire.map((r) => ({ ...r })),
     basis: basisOf(opp.length),
     tendencies: tendencies(opp),
     candidates: picks.map((i) => ({ id: ALLOC_IDS[i], outlook: outlook(scores[i]) })),
   };
-  const raw = { round, total, history: wire.map((r) => ({ ...r })) };
   return { hinted, raw, candidateIds: picks.map((i) => ALLOC_IDS[i]), scores, model };
 }
 

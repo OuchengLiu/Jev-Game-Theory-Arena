@@ -3,11 +3,17 @@
 // preflop r2x / r3x / r4x (raise to 2, 3 or 4 times the bet faced), postflop b33 / b50 / b75 /
 // b100 / b200 (bet that fraction of the pot, or raise by that fraction of the pot after calling),
 // and allin. The browser only sends sizes that are legal and distinct after clamping.
-// Hinted mode: all maths (hand class, draws, Monte-Carlo equity, pot odds, SPR, size words,
-// opponent stats) is done in the browser; the payload carries semantic buckets plus the literal
-// chip amount of each option, turned into plain English here.
-// Raw mode (bottom of file): no evaluation at all — cards, chips, the betting record, recent
-// results and the literal options, all as enums and bounded integers.
+//
+// Clean ablation (see shared/prompts.js):
+//   raw    = base(): rules, neutral goal, the hand number, street, own hole cards, board,
+//            dealer button, pot, both stacks, this round's bets, every action of this hand
+//            with amounts, the last few finished hands and the literal options with amounts.
+//   hinted = the identical base + `state.analysis` (hand category, draw, Monte-Carlo equity
+//            bucket, pot odds, effective stack / SPR / pot / chip-lead buckets, bet-size words,
+//            opponent profile) + an " Analysis: …" suffix on call and on each size option
+//            (price to call; size in big blinds / fraction of the pot).
+//   All maths is done in the browser (js/games/holdem-core.js); the hinted payload is the
+//   raw record + those analysis fields (enums only).
 import { S, CARDS, cardName, SchemaError } from '../schema.js';
 
 const STREET = S.enumv('preflop', 'flop', 'turn', 'river');
@@ -93,35 +99,35 @@ const POT_ODDS_TEXT = {
 
 const AGGR_TEXT = {
   unknown: 'Not enough hands seen yet.',
-  passive: 'Passive: mostly checks and calls, rarely bets or raises (their bets usually mean a real hand).',
+  passive: 'Passive: mostly checks and calls, rarely bets or raises.',
   balanced: 'Balanced: bets and raises a normal amount.',
-  aggressive: 'Aggressive: bets and raises often (bets are less reliable).',
-  very_aggressive: 'Very aggressive: bets and raises most of the time, including many bluffs.',
+  aggressive: 'Aggressive: bets and raises often.',
+  very_aggressive: 'Very aggressive: bets and raises most of the time.',
 };
 const FOLD_TEXT = {
   unknown: 'Not enough hands seen yet.',
-  rarely: 'Rarely folds when bet into (bluffs seldom work; value bets get paid).',
+  rarely: 'Rarely folds when bet into.',
   sometimes: 'Sometimes folds when bet into.',
-  often: 'Often folds when bet into (bluffs work well).',
+  often: 'Often folds when bet into.',
 };
 const STACK_TEXT = {
   deep: 'Deep: 75 big blinds or more behind (effective stack).',
-  medium: 'Medium: about 35 to 75 big blinds behind.',
-  short: 'Short: about 15 to 35 big blinds behind; one big pot can decide the match.',
-  very_short: 'Very short: under 15 big blinds behind; going all-in is often the natural play.',
+  medium: 'Medium: about 35 to 75 big blinds behind (effective stack).',
+  short: 'Short: about 15 to 35 big blinds behind (effective stack).',
+  very_short: 'Very short: under 15 big blinds behind (effective stack).',
 };
 const SPR_TEXT = {
-  very_low: 'Very low: the chips left behind are less than the pot. Any further bet commits everyone; with a decent hand, all-in is natural.',
-  low: 'Low: less than about 2.5 pots left behind. A good pair is usually strong enough to go all-in.',
-  medium: 'Medium: a few pots left behind.',
-  high: 'High: many pots left behind; only very strong hands want to put all the chips in.',
-  very_high: 'Very high: the pot is tiny compared with the stacks.',
+  very_low: 'Very low: the chips left behind are less than the pot.',
+  low: 'Low: about 1 to 2.5 pots left behind.',
+  medium: 'Medium: about 2.5 to 6 pots left behind.',
+  high: 'High: about 6 to 13 pots left behind.',
+  very_high: 'Very high: 13 or more pots left behind; the pot is tiny compared with the stacks.',
 };
 const POT_TEXT = {
-  small: 'Small (only the blinds or a little more).',
+  small: 'Small: only the blinds or a little more.',
   medium: 'Medium.',
   large: 'Large: many chips have gone in.',
-  huge: 'Huge: this hand matters a lot for the match.',
+  huge: 'Huge: a large share of all chips is in the pot.',
 };
 const CHIPS_TEXT = {
   well_ahead: 'You are far ahead in chips for the match.',
@@ -129,12 +135,6 @@ const CHIPS_TEXT = {
   even: 'Chips are about even.',
   behind: 'You are behind in chips for the match.',
   well_behind: 'You are far behind in chips for the match.',
-};
-const STREET_TEXT = {
-  preflop: 'Preflop: no community cards yet; flop, turn and river still to come.',
-  flop: 'Flop: 3 community cards are showing; turn and river still to come.',
-  turn: 'Turn: 4 community cards are showing; only the river is still to come.',
-  river: 'River: all 5 community cards are showing; no more cards to come.',
 };
 const SIZE_TEXT = {
   small: 'small',
@@ -146,38 +146,13 @@ const SIZE_TEXT = {
 
 const e = (obj) => S.enumv(Object.keys(obj));
 
-const OPTION = S.obj({ id: SIZE_ID, to: POS_CHIPS, add: POS_CHIPS, size: SIZE_WORD, frac: e(FRAC_TEXT) });
-
-const schema = S.obj({
-  street: STREET,
-  hole: S.list(CARD, 2),
-  board: S.list(CARD, 5),
-  hand: S.enumv(HAND_KINDS),
-  draw: e(DRAW_TEXT),
-  equity: e(EQUITY_TEXT),
-  pot_odds: e(POT_ODDS_TEXT),
-  position: S.enumv('button', 'big_blind'),
-  history: S.list(S.obj({ street: STREET, actor: S.enumv('jev', 'opp'), act: ACT, size: S.optional(SIZE_WORD) }), 24),
-  opp_aggression: e(AGGR_TEXT),
-  opp_fold_to_bet: e(FOLD_TEXT),
-  stack: e(STACK_TEXT),
-  spr: e(SPR_TEXT),
-  pot: e(POT_TEXT),
-  chips: e(CHIPS_TEXT),
-  pot_chips: POS_CHIPS,
-  stack_chips: CHIPS,
-  to_call: CHIPS,
-  legal: S.list(BASIC, 2),
-  options: S.list(OPTION, 6),
-});
-
 const BOARD_LEN = { preflop: 0, flop: 3, turn: 4, river: 5 };
 const LEGAL_SETS = ['check', 'fold,call'];
 const ORDER = ['fold', 'check', 'call'];
 
 const unique = (xs) => new Set(xs).size === xs.length;
 
-/** Shared invariants of the size options (hinted and raw). Returns 'bet' | 'raise' | null. */
+/** Invariants of the size options. Returns 'bet' | 'raise' | null. */
 function checkOptions(p, legal, bad, callAmount, stack) {
   const opts = p.options;
   const allowed = p.street === 'preflop' ? PREFLOP_IDS : POSTFLOP_IDS;
@@ -193,143 +168,19 @@ function checkOptions(p, legal, bad, callAmount, stack) {
     const already = opts[0].to - opts[0].add;
     if (already < 0 || opts.some((o) => o.to - o.add !== already)) bad('inconsistent option amounts');
     if (opts.some((o) => o.add <= callAmount)) bad('a raise must put in more than a call');
-    if (stack != null && (opts.some((o) => o.add > stack) || opts[opts.length - 1].add !== stack)) bad('option amounts do not match the stack');
+    if (opts.some((o) => o.add > stack) || opts[opts.length - 1].add !== stack) bad('option amounts do not match the stack');
   }
   if (!opts.length) return null;
   return p.street !== 'preflop' && !legal.includes('call') ? 'bet' : 'raise';
 }
 
-// Structural checks the flat schema cannot express.
-function validate(p) {
-  const bad = (m) => { throw new SchemaError(`payload: ${m}`); };
-  if (p.hole.length !== 2) bad('hole must have 2 cards');
-  if (p.board.length !== BOARD_LEN[p.street]) bad('board size does not match street');
-  if (!unique([...p.hole, ...p.board])) bad('duplicate cards');
-  const legal = [...p.legal].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
-  if (!LEGAL_SETS.includes(legal.join(','))) bad('inconsistent legal actions');
-  if ((p.street === 'preflop') !== PREFLOP_KINDS.includes(p.hand)) bad('hand kind does not match street');
-  if (p.pot_odds === 'none' ? legal.includes('call') : !legal.includes('call')) bad('pot odds do not match legal actions');
-  if (legal.includes('call') !== p.to_call > 0) bad('call amount does not match legal actions');
-  if (p.to_call > p.stack_chips || p.stack_chips + p.pot_chips > MAX_CHIPS) bad('chip amounts out of range');
-  const kind = checkOptions(p, legal, bad, p.to_call, p.stack_chips);
-  if (p.options.some((o) => (o.id === 'allin') !== (o.size === 'allin'))) bad('size word does not match option');
-  return { legal, kind };
-}
-
-function describeHistory(history) {
-  const who = (a) => (a === 'jev' ? 'you' : 'opponent');
-  const verb = (x) => {
-    if (x.size === 'allin') return 'went all-in';
-    const base = { check: 'checked', bet: 'bet', call: 'called', raise: 'raised', fold: 'folded' }[x.act];
-    return x.size ? `${base} (${SIZE_TEXT[x.size]})` : base;
-  };
-  const out = [];
-  for (const st of ['preflop', 'flop', 'turn', 'river']) {
-    const acts = history.filter((x) => x.street === st);
-    if (acts.length) out.push(`${st[0].toUpperCase()}${st.slice(1)}: ${acts.map((x) => `${who(x.actor)} ${verb(x)}`).join(', ')}`);
-  }
-  return out.length ? out : ['No voluntary actions yet this hand (only the blinds are in).'];
-}
-
-function situation(p, legal, kind) {
-  const cur = p.history.filter((x) => x.street === p.street);
-  const last = cur[cur.length - 1];
-  const canRaise = kind != null;
-  if (legal.includes('call')) {
-    if (p.street === 'preflop' && !cur.length) return `You are the small blind; you must fold, call ${p.to_call} more to match the big blind, or raise.`;
-    const what = last?.size === 'allin' ? 'gone all-in' : last && last.act === 'raise' ? `raised (${SIZE_TEXT[last.size] || 'a raise'})` : `bet (${SIZE_TEXT[last?.size] || 'a bet'})`;
-    return `The opponent has ${what}. You must fold, call ${p.to_call}, or ${canRaise ? 're-raise' : 'nothing else: raising is not possible'}.`;
-  }
-  if (p.street === 'preflop') return 'The small blind only called; you are the big blind and can check or raise.';
-  if (last && last.act === 'check') return 'The opponent checked to you.';
-  return 'You act first on this street.';
-}
-
 const chips = (n) => `${n} chip${n === 1 ? '' : 's'}`;
 const bbs = (n) => `${n / 2} big blind${n === 2 ? '' : 's'}`;
-
-function optionText(o, p, kind) {
-  if (o.id === 'allin') {
-    return `All-in: put in all of your remaining ${chips(o.add)} (${kind === 'bet' ? 'bet' : 'raise to'} ${o.to}). Right with a very strong hand, when few chips are left behind, or as a bold bluff when the opponent is likely to fold. If called, no more betting happens and all remaining cards are dealt; chips the opponent cannot match come back to you.`;
-  }
-  const word = SIZE_TEXT[o.size];
-  const why = {
-    small: 'Cheap: a probing bet, a thin value bet or a low-risk bluff; it gives the opponent a good price to continue.',
-    medium: 'A standard size that works for value bets and bluffs alike.',
-    large: 'Builds a big pot with a strong hand or a strong draw and puts real pressure on the opponent.',
-    overbet: 'Maximum pressure: for very strong hands or bold bluffs; risky with medium hands.',
-  }[o.size];
-  if (p.street === 'preflop') {
-    return `Raise to ${chips(o.to)} in total (${bbs(o.to)}), putting in ${o.add} more: a ${word} raise. ${why}`;
-  }
-  if (kind === 'bet') return `Bet ${chips(o.to)} (${FRAC_TEXT[o.frac]}): a ${word} bet. ${why}`;
-  return `Raise to ${chips(o.to)}, putting in ${o.add} more (after matching the bet, this raises by ${FRAC_TEXT[o.frac]}): a ${word} raise. ${why}`;
-}
-
-const QUESTIONS_TAIL = {
-  opp_bluffing: {
-    type: 'noul',
-    instructions: 'Is the opponent likely bluffing or semi-bluffing with a weaker hand than yours?',
-  },
-  ahead: {
-    type: 'noul',
-    instructions: "Does your hand currently beat the opponent's likely hand?",
-  },
-};
-
-function build(p) {
-  const { legal, kind } = validate(p);
-  const inPos = p.position === 'button';
-  const allinCall = p.to_call >= p.stack_chips ? ' This uses all of your remaining chips (all-in).' : '';
-
-  const state = {
-    game: "Heads-up No-Limit Texas Hold'em: you against one opponent, many hands in a row. Blinds 1 and 2; both players started the match with 200 chips (100 big blinds). Any bet or raise may be as large as all of your chips; you choose among the sizes listed in the options.",
-    goal: "Win as many of the opponent's chips as possible; the match ends when one player has none left.",
-    street: STREET_TEXT[p.street],
-    your_cards: p.hole.map(cardName),
-    board: p.board.length ? p.board.map(cardName) : 'none yet',
-    your_hand: HAND_TEXT[p.hand],
-    your_draw: DRAW_TEXT[p.draw],
-    hand_strength: EQUITY_TEXT[p.equity],
-    position: inPos
-      ? 'You are on the button: you act first before the flop but LAST on the flop, turn and river (an advantage).'
-      : 'You are the big blind: you act last before the flop but FIRST on the flop, turn and river (a disadvantage).',
-    situation: situation(p, legal, kind),
-    price_to_call: POT_ODDS_TEXT[p.pot_odds],
-    pot: `${chips(p.pot_chips)}. ${POT_TEXT[p.pot]}`,
-    your_chips: `${chips(p.stack_chips)} behind.`,
-    stacks: STACK_TEXT[p.stack],
-    stack_to_pot: SPR_TEXT[p.spr],
-    match_score: CHIPS_TEXT[p.chips],
-    actions_this_hand: describeHistory(p.history),
-    opponent_style: AGGR_TEXT[p.opp_aggression],
-    opponent_vs_bets: FOLD_TEXT[p.opp_fold_to_bet],
-  };
-
-  const CRIT = {
-    fold: 'Fold: give up this hand and the chips already in the pot. Right when your hand is unlikely to win and the price to continue is not worth it.',
-    check: 'Check: put in no chips and pass the action. Right with a medium hand to keep the pot small, with a weak hand that does not want to bluff, or to trap with a very strong hand.',
-    call: `Call ${chips(p.to_call)}: match the opponent's bet to stay in the hand. Right when your chance of winning is good enough for the price, or to catch a likely bluff.${allinCall}`,
-  };
-  const criteria = Object.fromEntries(legal.map((a) => [a, CRIT[a]]));
-  for (const o of p.options) criteria[o.id] = optionText(o, p, kind);
-
-  return {
-    state,
-    questions: {
-      action: {
-        type: 'choice',
-        instructions: 'Which action should you take now to win the most chips over the long run? You may mix: sometimes bluff, sometimes slow-play, and vary your sizes.',
-        criteria,
-      },
-      ...QUESTIONS_TAIL,
-    },
-  };
-}
+const cap = (x) => x[0].toUpperCase() + x.slice(1);
+const cardList = (cs) => cs.map(cardName).join(', ');
 
 // =====================================================================================
-// Raw mode: the literal record only. No equity, hand category, draws, pot odds, sizes as
-// fractions of the pot or profiles.
+// Raw record (shared by both modes)
 // =====================================================================================
 
 const HAND_NAME_TEXT = {
@@ -354,7 +205,8 @@ const PAST = S.obj({
   opp_hand: S.optional(e(HAND_NAME_TEXT)),
 });
 
-const RAW_SCHEMA = S.obj({
+const RAW_OPTION = { id: SIZE_ID, to: POS_CHIPS, add: POS_CHIPS };
+const RAW_FIELDS = {
   hand_no: S.int(1, 100000),
   street: STREET,
   hole: S.list(CARD, 2),
@@ -368,8 +220,25 @@ const RAW_SCHEMA = S.obj({
   actions: S.list(S.obj({ street: STREET, actor: WHO, act: RAW_ACT, amount: CHIPS, allin: S.bool() }), 32),
   legal: S.list(BASIC, 2),
   call_amount: CHIPS,
-  options: S.list(S.obj({ id: SIZE_ID, to: POS_CHIPS, add: POS_CHIPS }), 6),
   recent: S.list(PAST, 6),
+};
+const RAW_SCHEMA = S.obj({ ...RAW_FIELDS, options: S.list(S.obj(RAW_OPTION), 6) });
+
+// Hinted payload = the raw record + code-computed buckets (enums only).
+const HINTED_SCHEMA = S.obj({
+  ...RAW_FIELDS,
+  options: S.list(S.obj({ ...RAW_OPTION, size: SIZE_WORD, frac: e(FRAC_TEXT) }), 6),
+  hand: S.enumv(HAND_KINDS),
+  draw: e(DRAW_TEXT),
+  equity: e(EQUITY_TEXT),
+  pot_odds: e(POT_ODDS_TEXT),
+  opp_aggression: e(AGGR_TEXT),
+  opp_fold_to_bet: e(FOLD_TEXT),
+  stack: e(STACK_TEXT),
+  spr: e(SPR_TEXT),
+  pot_size: e(POT_TEXT),
+  chip_lead: e(CHIPS_TEXT),
+  action_sizes: S.list(S.obj({ street: STREET, actor: WHO, act: ACT, size: S.optional(SIZE_WORD) }), 24),
 });
 
 function validateRaw(p) {
@@ -396,9 +265,6 @@ function validateRaw(p) {
   }
   return { legal, kind };
 }
-
-const cap = (x) => x[0].toUpperCase() + x.slice(1);
-const cardList = (cs) => cs.map(cardName).join(', ');
 
 const RAW_STREET = {
   preflop: 'Preflop (no community cards yet)',
@@ -452,8 +318,20 @@ function recentLine(r) {
   return parts.join(' ');
 }
 
-function buildRaw(p) {
-  const { legal, kind } = validateRaw(p);
+const QUESTIONS_TAIL = {
+  opp_bluffing: {
+    type: 'noul',
+    instructions: 'Is the opponent likely bluffing or semi-bluffing with a weaker hand than yours?',
+  },
+  ahead: {
+    type: 'noul',
+    instructions: "Does your hand currently beat the opponent's likely hand?",
+  },
+};
+
+/** Shared base: rules, neutral goal, the situation, the full record, literal options. */
+function base(p, checked = validateRaw(p)) {
+  const { legal, kind } = checked;
   const allinCall = p.call_amount >= p.jev_stack ? ' (all of your remaining chips)' : '';
   const CRIT = {
     fold: 'Fold: give up the pot. The chips you have already put in stay in the pot.',
@@ -467,7 +345,7 @@ function buildRaw(p) {
     criteria[o.id] = `${verb}: put in ${chips(o.add)}${kind === 'bet' ? '' : ' more'}${tail}.`;
   }
   const state = {
-    game: "Heads-up No-Limit Texas Hold'em: you against one opponent, many hands in a row. Both players started the match with 200 chips. Blinds 1 and 2. A bet must be at least 2 chips; a raise must increase the bet by at least the previous bet or raise; a bet or raise may go up to all of your chips (chips the opponent cannot match are returned). Best five of seven cards wins at showdown.",
+    game: "Heads-up No-Limit Texas Hold'em: you against one opponent, many hands in a row. Both players started the match with 200 chips. Blinds 1 and 2. A bet must be at least 2 chips; a raise must increase the bet by at least the previous bet or raise; a bet or raise may go up to all of your chips (chips the opponent cannot match are returned). If a player is all-in and called, the remaining cards are dealt with no more betting. Best five of seven cards wins at showdown.",
     goal: "Win as many of the opponent's chips as possible; the match ends when one player has none left.",
     hand: `Hand ${p.hand_no} of the match.`,
     street: RAW_STREET[p.street],
@@ -481,14 +359,14 @@ function buildRaw(p) {
     opponent_stack: `${chips(p.opp_stack)} behind`,
     this_betting_round: `Chips put in during this betting round: you ${p.jev_bet}, opponent ${p.opp_bet}.`,
     actions_this_hand: rawHistory(p.actions),
-    recent_hands: p.recent.length ? p.recent.slice().reverse().map(recentLine) : 'No earlier hands yet.',
+    recent_hands: p.recent.length ? p.recent.slice().reverse().map(recentLine) : ['No earlier hands yet.'],
   };
   return {
     state,
     questions: {
       action: {
         type: 'choice',
-        instructions: 'Which action should you take now to win the most chips over the long run? You may mix: sometimes bluff, sometimes slow-play, and vary your sizes.',
+        instructions: 'Which action do you take now?',
         criteria,
       },
       ...QUESTIONS_TAIL,
@@ -496,4 +374,63 @@ function buildRaw(p) {
   };
 }
 
-export default { schema, build, raw: { schema: RAW_SCHEMA, build: buildRaw } };
+// =====================================================================================
+// Hinted: base + analysis
+// =====================================================================================
+
+function describeSizes(history) {
+  const who = (a) => (a === 'jev' ? 'you' : 'opponent');
+  const verb = (x) => {
+    if (x.size === 'allin') return 'went all-in';
+    const w = { check: 'checked', bet: 'bet', call: 'called', raise: 'raised', fold: 'folded' }[x.act];
+    return x.size ? `${w} (${SIZE_TEXT[x.size]})` : w;
+  };
+  const out = [];
+  for (const st of ['preflop', 'flop', 'turn', 'river']) {
+    const acts = history.filter((x) => x.street === st);
+    if (acts.length) out.push(`${STREET_NAME[st]}: ${acts.map((x) => `${who(x.actor)} ${verb(x)}`).join(', ')}`);
+  }
+  return out.length ? out : ['No voluntary actions yet this hand (only the blinds are in).'];
+}
+
+function sizeAnalysis(o, p, kind) {
+  const word = SIZE_TEXT[o.size];
+  if (o.id === 'allin') return `an all-in ${kind}; ${FRAC_TEXT[o.frac]}.`;
+  if (p.street === 'preflop') return `${bbs(o.to)} in total; a ${word} raise.`;
+  if (kind === 'bet') return `${FRAC_TEXT[o.frac]}; a ${word} bet.`;
+  return `after matching the bet, this raises by ${FRAC_TEXT[o.frac]}; a ${word} raise.`;
+}
+
+const RAW_KEYS = Object.keys(RAW_FIELDS);
+
+function hinted(p) {
+  const bad = (m) => { throw new SchemaError(`payload: ${m}`); };
+  const raw = Object.fromEntries(RAW_KEYS.map((k) => [k, p[k]]));
+  raw.options = p.options.map(({ id, to, add }) => ({ id, to, add }));
+  const checked = validateRaw(raw);
+  const { legal, kind } = checked;
+  if ((p.street === 'preflop') !== PREFLOP_KINDS.includes(p.hand)) bad('hand kind does not match street');
+  if (p.pot_odds === 'none' ? legal.includes('call') : !legal.includes('call')) bad('pot odds do not match legal actions');
+  if (p.options.some((o) => (o.id === 'allin') !== (o.size === 'allin'))) bad('size word does not match option');
+
+  const req = base(raw, checked);
+  req.state.analysis = {
+    your_hand: HAND_TEXT[p.hand],
+    your_draw: DRAW_TEXT[p.draw],
+    hand_strength: EQUITY_TEXT[p.equity],
+    price_to_call: POT_ODDS_TEXT[p.pot_odds],
+    effective_stack: STACK_TEXT[p.stack],
+    stack_to_pot: SPR_TEXT[p.spr],
+    pot_size: POT_TEXT[p.pot_size],
+    match_score: CHIPS_TEXT[p.chip_lead],
+    bet_sizes_this_hand: describeSizes(p.action_sizes),
+    opponent_style: AGGR_TEXT[p.opp_aggression],
+    opponent_vs_bets: FOLD_TEXT[p.opp_fold_to_bet],
+  };
+  const crit = req.questions.action.criteria;
+  if (crit.call) crit.call += ` Analysis: ${POT_ODDS_TEXT[p.pot_odds]}`;
+  for (const o of p.options) crit[o.id] += ` Analysis: ${sizeAnalysis(o, p, kind)}`;
+  return req;
+}
+
+export default { schema: HINTED_SCHEMA, build: hinted, raw: { schema: RAW_SCHEMA, build: base } };

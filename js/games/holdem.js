@@ -13,7 +13,7 @@ import {
 } from './holdem-core.js';
 
 const HUMAN = 0, JEV = 1;
-const RECENT = 6; // finished hands remembered for Jev's raw payload
+const RECENT = 6; // finished hands remembered for Jev's record (both modes)
 // Human quick-size chips: fraction of the pot (a raise adds this fraction of the pot after calling).
 const QUICK = [['q33', 1 / 3], ['q50', 1 / 2], ['q75', 3 / 4], ['q100', 1], ['q200', 2]];
 
@@ -119,7 +119,7 @@ const HAND_NAMES = {
 
 export default {
   id: 'holdem',
-  meta: { icon: '♠︎', accent: '#6366f1', minutes: 8, version: '2.0' },
+  meta: { icon: '♠︎', accent: '#6366f1', minutes: 8, version: '2.2' },
   strings: {
     en: {
       title: 'Heads-up No-Limit Hold’em',
@@ -215,6 +215,7 @@ export default {
     // Jev modes: Jev's odds are sealed during a hand and reviewed when it ends; the review stays
     // up until Jev's first decision of the next hand.
     let reviewing = false;
+    let aheadCal = []; // this hand's Jev 'ahead' judgements: { res, p } (telemetry, emitted at showdown)
     const endOfHand = () => { if (panel.sealed?.length) { panel.unseal(); reviewing = true; } };
     const revealing = () => hand.done && performance.now() < revealAt;
     // anonymous telemetry: never allowed to break the game
@@ -277,6 +278,7 @@ export default {
       handNo++;
       born.clear();
       hand = newHand(stacks, button);
+      aheadCal = [];
       busy = false;
       revealAt = 0; plan = null;
       step();
@@ -295,6 +297,12 @@ export default {
           hand.recorded = true;
           stacks = [...hand.stacks];
           over = stacks[HUMAN] === 0 || stacks[JEV] === 0;
+          // Calibration of Jev's 'ahead' judgements: only when the hand reached showdown (ties skipped).
+          try {
+            const r = hand.result;
+            if (r?.showdown && r.winner !== -1) for (const c of aheadCal) track('cal', c.res, { ph: 'ahead', p: c.p, truth: r.winner === JEV });
+          } catch { /* ignore */ }
+          aheadCal = [];
           if (over) track('end', stacks[HUMAN] > 0 ? 'win' : 'lose');
           past.push(summarizeHand(hand, handNo));
           if (past.length > RECENT) past.shift();
@@ -358,7 +366,7 @@ export default {
       const opts = jevOptions(cur);
       const ids = opts.map((o) => o.id);
       const callN = amountFor(cur, 'call');
-      const build = (mode) => (mode === 'raw' ? makeRawPayload(cur, JEV, past, handNo) : makePayload(cur, JEV, stats));
+      const build = (mode) => (mode === 'raw' ? makeRawPayload(cur, JEV, past, handNo) : makePayload(cur, JEV, stats, past, handNo));
       let res;
       try {
         res = await ctx.decide('holdem', build, localBot);
@@ -384,6 +392,8 @@ export default {
         ],
       });
       recordStats(stats, cur, o.act);
+      const pAhead = res.answers?.ahead?.noul;
+      if (typeof pAhead === 'number') aheadCal.push({ res, p: pAhead });
       trackMove(JEV, o.act, o.to, res);
       applyAction(cur, o.act, o.to);
       step();

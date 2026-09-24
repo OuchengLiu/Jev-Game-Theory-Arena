@@ -22,13 +22,21 @@ const defaults = {
 let state = { ...defaults, ...safeParse(storageGet(KEY)) };
 // The opponent mode is per visit: each time the site is opened, Hinted or Raw is assigned at
 // random (50/50) so both get played equally; a player's own switch lasts for that visit (tab).
+// The play policy is randomised independently: 'greedy' (always Jev's top-rated move) or
+// 'sample' (a move drawn in proportion to Jev's probabilities), weighted by GREEDY_SHARE.
 const SESSION_MODE = 'jev-gtl-mode';
-state.jevMode = (() => {
-  try { const m = sessionStorage.getItem(SESSION_MODE); if (MODES.includes(m)) return m; } catch { /* ignore */ }
-  const m = Math.random() < 0.5 ? 'hinted' : 'raw';
-  try { sessionStorage.setItem(SESSION_MODE, m); } catch { /* ignore */ }
-  return m;
-})();
+const SESSION_POLICY = 'jev-gtl-policy';
+const POLICIES = ['greedy', 'sample'];
+const perVisit = (key, allowed, pick) => {
+  try { const v = sessionStorage.getItem(key); if (allowed.includes(v)) return v; } catch { /* ignore */ }
+  const v = pick();
+  try { sessionStorage.setItem(key, v); } catch { /* ignore */ }
+  return v;
+};
+state.jevMode = perVisit(SESSION_MODE, MODES, () => (Math.random() < 0.5 ? 'hinted' : 'raw'));
+// Share of visits that get 'greedy' (Top pick); the rest get 'sample' (By odds).
+export const GREEDY_SHARE = 0.75;
+state.policy = perVisit(SESSION_POLICY, POLICIES, () => (Math.random() < GREEDY_SHARE ? 'greedy' : 'sample'));
 if (!['zh', 'en'].includes(state.lang)) state.lang = defaults.lang;
 
 function storageGet(k) {
@@ -46,7 +54,8 @@ export const settings = {
     state = { ...state, [k]: v };
     try {
       if (k === 'jevMode') sessionStorage.setItem(SESSION_MODE, v);
-      const { jevMode, ...persist } = state; // the mode is per visit, not remembered across visits
+      if (k === 'policy') sessionStorage.setItem(SESSION_POLICY, v);
+      const { jevMode, policy, ...persist } = state; // both are per visit, not remembered across visits
       localStorage.setItem(KEY, JSON.stringify(persist));
     } catch { /* storage blocked: settings last for this visit only */ }
     listeners.forEach((fn) => fn(k, v));

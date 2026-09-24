@@ -107,7 +107,7 @@ export function groupedBars({ title, note, cats, series, value, labels, fmt = pc
  * Multi-series line chart over ordered x values.
  * xs: [{key,label}], series: [{key,label}], value(x, series) → {v, n} | null
  */
-export function lineChart({ title, note, xs, series, value, labels, fmt = pctFmt, max = 1, height = 220, minN = 1 }) {
+export function lineChart({ title, note, xs, series, value, labels, fmt = pctFmt, max = 1, height = 220, minN = 1, ref = null, refLabel = '' }) {
   const W = 640, H = height, L = 36, R = 64, T = 12, B = 28;
   const plotW = W - L - R, plotH = H - T - B;
   const x = (i) => L + (xs.length === 1 ? plotW / 2 : (i / (xs.length - 1)) * plotW);
@@ -119,6 +119,11 @@ export function lineChart({ title, note, xs, series, value, labels, fmt = pctFmt
   }
   const step = Math.ceil(xs.length / 10);
   xs.forEach((xv, i) => { if (i % step === 0 || i === xs.length - 1) svg.append(s('text', { x: x(i), y: H - 8, class: 'viz-cat', 'text-anchor': 'middle' }, xv.label)); });
+  if (ref) {
+    const d = xs.map((_, i) => `${i ? 'L' : 'M'}${x(i)},${y(ref[i])}`).join(' ');
+    svg.append(s('path', { d, fill: 'none', class: 'viz-ref' }));
+    if (refLabel) svg.append(s('text', { x: x(xs.length - 1) + 8, y: y(ref[xs.length - 1]) + 4, class: 'viz-reflabel' }, refLabel));
+  }
   const lastLabels = [];
   series.forEach((se) => {
     const pts = xs.map((xv, i) => { const d = value(xv, se); return d && d.n >= minN ? [x(i), y(Math.min(max, d.v)), d] : null; });

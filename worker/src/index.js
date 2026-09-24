@@ -110,7 +110,7 @@ export default {
     } catch (e) {
       const v = await askGuard('invalid');
       if (!v.ok) return refuse(v);
-      return json(400, { error: 'bad_request', detail: e instanceof SchemaError ? e.message : undefined });
+      return json(400, { error: 'bad_request', detail: env.DEBUG === '1' && e instanceof SchemaError ? e.message : undefined });
     }
 
     const provider = env.TYPESAFE_API_KEY ? 'typesafe' : env.AI ? 'workers-ai' : null;
@@ -132,8 +132,8 @@ export default {
         const msg = String(e?.message || e);
         console.log('workers-ai failure', msg);
         // capacity / rate errors → busy; everything else → unavailable
-        // `detail` is a short provider message (never contains secrets) to make setup problems diagnosable
-        const detail = msg.replace(/[^\x20-\x7e]/g, '').slice(0, 160);
+        // `detail` (provider message) is only returned when the DEBUG var is "1", for diagnosing setup problems
+        const detail = env.DEBUG === '1' ? msg.replace(/[^\x20-\x7e]/g, '').slice(0, 160) : undefined;
         if (/credit|billing|payment|2021/i.test(msg)) return json(503, { error: 'not_configured', retryAfter: 600, detail });
         if (/capacity|rate|limit|429|3040|neuron/i.test(msg)) return json(503, { error: 'upstream_busy', retryAfter: 60, detail });
         return json(502, { error: 'unavailable', retryAfter: 30, detail });

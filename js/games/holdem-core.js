@@ -471,42 +471,6 @@ export function sprBucket(eff, pot) {
   return x < 1 ? 'very_low' : x < 2.5 ? 'low' : x < 6 ? 'medium' : x < 13 ? 'high' : 'very_high';
 }
 
-/**
- * Compact payload validated by shared/games/holdem.js. p must be the player to act.
- * stats: emptyStats()-shaped session stats; we read the opponent's entry.
- */
-export function makePayload(hand, p, stats, samples = 600, rng = Math.random) {
-  const o = 1 - p;
-  const hole = hand.holes[p], board = hand.board;
-  const e = equity(hole, board, samples, rng);
-  const eff = Math.min(hand.stacks[p], hand.stacks[o]);
-  const pot = potSize(hand);
-  const lead = (hand.stacks[p] + hand.total[p]) - (hand.stacks[o] + hand.total[o]);
-  const legal = legalActions(hand).filter((a) => a === 'fold' || a === 'check' || a === 'call');
-  return {
-    street: STREETS[hand.street],
-    hole: hole.map(cardStr),
-    board: board.map(cardStr),
-    hand: hand.street === 0 ? preflopKind(hole) : postflopKind(hole, board),
-    draw: drawKind(hole, board),
-    equity: equityBucket(e),
-    pot_odds: potOddsBucket(toCall(hand, p), pot),
-    position: hand.button === p ? 'button' : 'big_blind',
-    history: hand.history.slice(-24).map((x) => ({ street: x.street, actor: x.actor === p ? 'jev' : 'opp', act: x.act, ...(x.size ? { size: x.size } : {}) })),
-    opp_aggression: oppAggression(stats[o]),
-    opp_fold_to_bet: oppFoldToBet(stats[o]),
-    stack: eff >= 150 ? 'deep' : eff >= 70 ? 'medium' : eff >= 30 ? 'short' : 'very_short',
-    spr: sprBucket(eff, pot),
-    pot: pot < 8 ? 'small' : pot < 30 ? 'medium' : pot < 100 ? 'large' : 'huge',
-    chips: lead > 120 ? 'well_ahead' : lead > 30 ? 'ahead' : lead >= -30 ? 'even' : lead >= -120 ? 'behind' : 'well_behind',
-    pot_chips: pot,
-    stack_chips: hand.stacks[p],
-    to_call: legal.includes('call') ? amountFor(hand, 'call') : 0,
-    legal,
-    options: sizeOptions(hand),
-  };
-}
-
 // ---------------- raw payload (no code-computed evaluation at all) ----------------
 
 export const HAND_NAMES = [...CATS, 'royal_flush'];
@@ -571,6 +535,36 @@ export function makeRawPayload(hand, p, past = [], handNo = 1) {
   };
 }
 
+/**
+ * Hinted payload validated by shared/games/holdem.js: exactly the raw payload (see
+ * makeRawPayload) plus the code-computed buckets. p must be the player to act.
+ * stats: emptyStats()-shaped session stats; we read the opponent's entry.
+ */
+export function makePayload(hand, p, stats, past = [], handNo = 1, samples = 600, rng = Math.random) {
+  const o = 1 - p;
+  const raw = makeRawPayload(hand, p, past, handNo);
+  const hole = hand.holes[p], board = hand.board;
+  const e = equity(hole, board, samples, rng);
+  const eff = Math.min(hand.stacks[p], hand.stacks[o]);
+  const pot = potSize(hand);
+  const lead = (hand.stacks[p] + hand.total[p]) - (hand.stacks[o] + hand.total[o]);
+  return {
+    ...raw,
+    options: sizeOptions(hand), // raw {id, to, add} + size word + pot fraction
+    hand: hand.street === 0 ? preflopKind(hole) : postflopKind(hole, board),
+    draw: drawKind(hole, board),
+    equity: equityBucket(e),
+    pot_odds: potOddsBucket(toCall(hand, p), pot),
+    opp_aggression: oppAggression(stats[o]),
+    opp_fold_to_bet: oppFoldToBet(stats[o]),
+    stack: eff >= 150 ? 'deep' : eff >= 70 ? 'medium' : eff >= 30 ? 'short' : 'very_short',
+    spr: sprBucket(eff, pot),
+    pot_size: pot < 8 ? 'small' : pot < 30 ? 'medium' : pot < 100 ? 'large' : 'huge',
+    chip_lead: lead > 120 ? 'well_ahead' : lead > 30 ? 'ahead' : lead >= -30 ? 'even' : lead >= -120 ? 'behind' : 'well_behind',
+    action_sizes: hand.history.slice(-24).map((x) => ({ street: x.street, actor: x.actor === p ? 'jev' : 'opp', act: x.act, ...(x.size ? { size: x.size } : {}) })),
+  };
+}
+
 // ---------------- built-in bot policy (raw weights; wrapped in API shape by holdem.js) ----------------
 
 const EQ_MID = { very_weak: 0.22, weak: 0.36, marginal: 0.46, decent: 0.54, strong: 0.64, very_strong: 0.78, monster: 0.92 };
@@ -607,7 +601,7 @@ function spread(opts, total, intent, pl, eq) {
 
 export function botPolicy(pl) {
   const street = pl.street;
-  const oppAggr = pl.history.filter((x) => x.actor === 'opp' && (x.act === 'bet' || x.act === 'raise'));
+  const oppAggr = pl.action_sizes.filter((x) => x.actor === 'opp' && (x.act === 'bet' || x.act === 'raise'));
   const oppAggrStreet = oppAggr.filter((x) => x.street === street).length;
   const profAdj = { unknown: 0, passive: -0.04, balanced: 0, aggressive: 0.03, very_aggressive: 0.06 }[pl.opp_aggression];
   // random-hand equity overstates us against a betting range; discount per opponent bet/raise, more for big ones

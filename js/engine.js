@@ -134,7 +134,11 @@ export async function decide(game, makePayload, local) {
     else {
       try {
         const data = await askJev(game, build(mode), mode);
-        return { answers: data.answers, model: data.model, source: 'jev', mode, ms: Math.round(performance.now() - t0) };
+        // Policy 'greedy': Jev plays its top-rated move (like temperature 0); 'sample': a move is
+        // drawn in proportion to its probabilities. pickAction reads the marker.
+        const policy = settings.get('policy');
+        if (policy === 'greedy') for (const a of Object.values(data.answers || {})) if (a && a.type === 'choice') Object.defineProperty(a, 'greedy', { value: true });
+        return { answers: data.answers, model: data.model, source: 'jev', mode, policy, ms: Math.round(performance.now() - t0) };
       } catch (e) {
         error = classify(e);
         startCooldown(error, e.retryAfter);
@@ -171,11 +175,14 @@ export function choiceAnswer(weights) {
 export const noulAnswer = (p) => ({ type: 'noul', noul: Math.min(1, Math.max(0, p)) });
 
 /**
- * Pick an action from a Choice answer, restricted to `legal`, by sampling from the
- * distribution: Jev always plays a true mixed strategy.
+ * Pick an action from a Choice answer, restricted to `legal`.
+ * Answers marked `greedy` (Jev, when the visit's policy is 'greedy') → the highest-probability
+ * legal move. Everything else (Jev under the 'sample' policy, the practice bot, and mixes built
+ * by game code such as Rock-Paper-Scissors' counter-strategy) is sampled from its distribution.
  */
 export function pickAction(answer, legal) {
   const probs = normalize(Object.fromEntries(legal.map((a) => [a, answer?.probabilities?.[a] ?? 0])));
+  if (answer?.greedy) return legal.reduce((best, a) => (probs[a] > probs[best] ? a : best), legal[0]);
   let r = Math.random();
   for (const a of legal) {
     r -= probs[a];

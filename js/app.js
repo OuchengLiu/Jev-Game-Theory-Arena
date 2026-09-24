@@ -1,6 +1,6 @@
 import { t, registerStrings } from './i18n.js';
 import { settings, jevAvailable, effectiveMode } from './settings.js';
-import { h, ThinkPanel, segmented, toast } from './ui.js';
+import { h, ThinkPanel, segmented, toast, applyOddsVisibility } from './ui.js';
 import { decide, pickAction, choiceAnswer, noulAnswer, normalize, getJevStatus, onJevStatus } from './engine.js';
 import { gameIcon, icons } from './icons.js';
 import { CONFIG } from './config.js';
@@ -100,7 +100,7 @@ function heroVisual() {
     card.replaceChildren(
       h('div.hc-top',
         h('span.hc-game', svgEl(gameIcon(s.game, 16)), t(`${g.id}.title`)),
-        h('span.hc-model', h('span.pulse'), 'jev-latest · ', 90 + ((i * 37) % 80), ' ms'),
+        h('span.hc-model', t('hero.example')),
       ),
       h('div.hc-q', s.q[lang]),
       h('div.bars', s.bars.map(([k, label, p], j) => h('div.bar-row', { class: j === 0 ? 'picked' : '' },
@@ -172,6 +172,8 @@ function aboutPage() {
         h('div.mode-card', h('b', t('mode.practice')), h('p', t('mode.info.practice'))),
       ),
       h('p.muted', t('mode.info.note')),
+      h('h2', t('about.method.t')),
+      h('dl.method', [1, 2, 3, 4].map((i) => [h('dt', t(`about.method.${i}t`)), h('dd', t(`about.method.${i}`))])),
       h('h2', t('about.games.t')),
       h('div.about-games', GAMES.map((g) => h('a.about-game', { href: `#/play/${g.id}`, style: { '--accent': g.meta.accent } },
         svgEl(gameIcon(g.id, 22), 'ag-icon'), h('span', h('b', t(`${g.id}.title`)), h('small.muted', t(`${g.id}.concept`)))))),
@@ -191,6 +193,9 @@ function modeControl() {
     h('div.pop-item', h('span.chip', t('mode.hinted')), h('p', t('mode.info.hinted'))),
     h('div.pop-item', h('span.chip', t('mode.raw')), h('p', t('mode.info.raw'))),
     h('div.pop-item', h('span.chip.chip-muted', t('mode.practice')), h('p', t('mode.info.practice'))),
+    h('div.pop-sep'),
+    h('div.pop-item', h('span.chip', t('policy.greedy')), h('p', t('policy.info.greedy'))),
+    h('div.pop-item', h('span.chip', t('policy.sample')), h('p', t('policy.info.sample'))),
     h('p.pop-note', t('mode.info.note')),
   );
   const info = h('button.info-btn', { type: 'button', title: t('mode.info.title'), 'aria-label': t('mode.info.title'), html: icons.info,
@@ -210,6 +215,18 @@ function modeControl() {
     pop,
   );
   return wrap;
+}
+
+// Play policy: how a move is picked from Jev's probabilities (Jev modes only).
+function policyControl() {
+  const jevOn = effectiveMode() !== 'practice';
+  return h('div.control.mode-control.policy-control', { class: jevOn ? '' : 'off' },
+    h('span.control-label', t('policy.label')),
+    segmented([
+      { value: 'greedy', label: t('policy.greedy'), disabled: !jevOn },
+      { value: 'sample', label: t('policy.sample'), disabled: !jevOn },
+    ], settings.get('policy'), (v) => settings.set('policy', v)),
+  );
 }
 
 // One-time note about anonymous gameplay statistics (only when they would actually be sent).
@@ -282,11 +299,11 @@ function gamePage(game) {
           h('p.muted', t(`${game.id}.tagline`)),
         ),
       ),
-      h('div.controls', mode),
+      h('div.controls', mode, policyControl()),
     ),
     h('div.game-sub',
       rulesToggle(game),
-      h('span.badge.vs-badge', { class: `vs-${effectiveMode()}` }, h('span.vs-dot'), t('vs.now', { mode: effectiveMode() === 'practice' ? t('mode.practice') : `Jev · ${t(`mode.${effectiveMode()}`)}` })),
+      h('span.badge.vs-badge', { class: `vs-${effectiveMode()}` }, h('span.vs-dot'), t('vs.now', { mode: effectiveMode() === 'practice' ? t('mode.practice') : `Jev · ${t(`mode.${effectiveMode()}`)} · ${t(`policy.${settings.get('policy')}`)}` })),
       h('span.badge', svgEl(icons.shield), t('disclaimer.short')),
       !jevAvailable() ? h('span.badge.offline', h('span.dot-off'), t('status.offline')) : null,
     ),
@@ -351,5 +368,9 @@ function rerender() {
 settings.onChange(rerender);
 window.addEventListener('hashchange', route);
 applyTheme();
+applyOddsVisibility();
 route();
 initUpdates();
+
+// Service worker: revalidates every file on each load so updates appear without a hard refresh.
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

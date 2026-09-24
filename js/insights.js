@@ -1,11 +1,11 @@
 // Insights page: public, aggregate statistics of how people and Jev play.
-// Data: GET <proxy>/stats (pre-aggregated counts, cached 5 min). Until real data exists the
-// page shows clearly-labelled sample data so the layout can be judged.
+// Data: GET <proxy>/stats (pre-aggregated counts, cached 5 min). Only real games are counted;
+// a game with no records yet shows empty charts.
 
 import { t, registerStrings } from './i18n.js';
 import { settings } from './settings.js';
 import { CONFIG } from './config.js';
-import { h } from './ui.js';
+import { h, segmented } from './ui.js';
 import { groupedBars, lineChart, statTile } from './charts.js';
 import { gameIcon } from './icons.js';
 
@@ -14,8 +14,8 @@ const MIN_N = 10; // hide rates computed from fewer events
 registerStrings('ins', {
   en: {
     title: 'Insights',
-    lead: 'How do people play compared with Jev? Every chart below is built from anonymous gameplay across the site and updates every few minutes.',
-    sample: 'Sample data. Not enough real games have been played yet, so these charts show made-up numbers to illustrate the page. Real data will replace them automatically.',
+    lead: 'How do people play compared with Jev? Every chart below counts real, anonymous games played on this site and updates every few minutes.',
+    none: 'No games recorded yet. Charts fill in as people play.',
     updated: 'Updated {time}',
     matches: 'Matches played', moves: 'Moves recorded', humanWin: 'Human win rate',
     vs: 'vs {opp}',
@@ -32,17 +32,26 @@ registerStrings('ins', {
     ld_note: 'Bluff rate: share of bids that were unlikely to be true given the bidder’s own dice.',
     hd_chart: 'Playing style', hd_aggr: 'Aggression', hd_bluff: 'Bluffs among bets', hd_fold: 'Fold rate',
     hd_note: 'Aggression: bets, raises and all-ins as a share of all actions. Bluffs: aggressive actions made with a weak hand.',
+    cal_t: 'Is Jev calibrated?',
+    cal_b: 'Jev claims its probabilities are calibrated: when it says 70%, it should be right about 70% of the time. Each game asks it a yes/no question we can check afterwards (will you cooperate, are you bluffing, is it ahead, will you stack a field, will its predicted throw be right). The dashed line is perfect calibration.',
+    cal_chart: 'Stated probability vs how often it came true',
+    cal_x: 'stated',
+    cal_ref: 'perfect',
+    cal_err: 'Average calibration error',
+    cal_err_sub: '{s} · lower is better',
+    pd_ret: 'Retaliation & forgiveness', pd_ret_note: 'After the other side defected: defect back (retaliate) or cooperate anyway (forgive). Unprovoked: defecting after the other side cooperated.',
+    pd_retaliate: 'Retaliate', pd_forgive: 'Forgive', pd_unprovoked: 'Unprovoked defection',
+    rps_first: 'Round 1: what people throw vs what Jev predicts', rps_first_note: 'Human bars: actual first throws. Jev bars: what Jev predicted the first throw would be.',
     privacy_t: 'Your data, your choice',
-    privacy_b: 'We record moves (for example “round 3: cooperated”), never who made them. There is no IP address, account, device fingerprint or free text, and each match gets a random id that isn’t linked to you. Nothing is sold or shared except the aggregate charts on this page.',
+    privacy_b: 'We record moves (for example “round 3: cooperated”), never who made them. There is no IP address, account, device fingerprint or free text, and each match gets a random id that isn’t linked to you. Nothing is ever sold, and only the aggregate charts on this page are published.',
     share: 'Contribute anonymous gameplay statistics',
     research: 'Also allow my anonymous data to be used in academic research',
-    research_note: 'Off by default. Only games played with this switched on would ever be used for publications, and only after ethics approval.',
     offline: 'Statistics aren’t available yet.',
   },
   zh: {
     title: '数据洞察',
-    lead: '人类和 Jev 的打法有什么不同？下面的每张图都来自全站的匿名对局数据，每隔几分钟更新一次。',
-    sample: '示例数据。真实对局还不够多，下面的图用的是虚构数字，只为展示页面效果。真实数据积累后会自动替换。',
+    lead: '人类和 Jev 的打法有什么不同？下面的每张图都统计自本站真实的匿名对局，每隔几分钟更新一次。',
+    none: '还没有对局记录，大家玩起来之后图表会逐渐填满。',
     updated: '更新于 {time}',
     matches: '对局数', moves: '记录的出招数', humanWin: '人类胜率',
     vs: '对 {opp}',
@@ -59,11 +68,20 @@ registerStrings('ins', {
     ld_note: '诈唬率：按叫点者自己的骰子来看，不太可能成立的叫点所占比例。',
     hd_chart: '打法风格', hd_aggr: '激进度', hd_bluff: '下注中的诈唬比例', hd_fold: '弃牌率',
     hd_note: '激进度：下注、加注和全下占全部动作的比例。诈唬：拿着弱牌做出的激进动作。',
+    cal_t: 'Jev 的概率准吗？',
+    cal_b: 'Jev 声称它给出的概率是校准过的：说 70% 的事，应该大约 70% 的时候成真。每个游戏都会问它一个事后能核对的是非题（你会不会合作、你是不是在诈唬、它是否领先、你会不会重兵压一个战场、它预测的出拳是否猜中）。虚线表示完美校准。',
+    cal_chart: 'Jev 给出的概率 vs 实际成真的比例',
+    cal_x: '给出的概率',
+    cal_ref: '完美校准',
+    cal_err: '平均校准误差',
+    cal_err_sub: '{s} · 越低越好',
+    pd_ret: '报复与原谅', pd_ret_note: '对方上一轮背叛后：回以背叛（报复），还是继续合作（原谅）。无故背叛：对方上一轮合作，自己却背叛。',
+    pd_retaliate: '报复', pd_forgive: '原谅', pd_unprovoked: '无故背叛',
+    rps_first: '第 1 回合：人类实际出什么 vs Jev 预测你出什么', rps_first_note: '人类的柱子是实际的第一拳，Jev 的柱子是它预测的第一拳。',
     privacy_t: '你的数据，由你决定',
-    privacy_b: '我们只记录出招（例如“第 3 回合：合作”），从不记录是谁出的招：没有 IP、账号、设备指纹或任何自由文本，每局对局只有一个和你无关的随机 ID。数据不会出售或分享，公开的只有本页的汇总图表。',
+    privacy_b: '我们只记录出招（例如“第 3 回合：合作”），从不记录是谁出的招：没有 IP、账号、设备指纹或任何自由文本，每局对局只有一个和你无关的随机 ID。数据绝不出售，公开的只有本页的汇总图表。',
     share: '贡献匿名对局统计',
     research: '同时允许我的匿名数据用于学术研究',
-    research_note: '默认关闭。只有打开这个开关时玩的对局，才可能在通过伦理审查后用于发表。',
     offline: '统计数据暂时不可用。',
   },
 }, { game: false });
@@ -84,55 +102,6 @@ async function loadStats() {
   } catch { return null; }
 }
 
-function sampleRows() {
-  // Deterministic, plausible-looking numbers for the empty state.
-  let seed = 7;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  const rows = [];
-  const add = (game, mode, actor, kind, phase, act, detail, n) => rows.push({ game, game_ver: '1.1', mode, actor, model: actor === 'jev' ? 'jev-1.13.0' : '', kind, phase, act, detail, n: Math.round(n) });
-  const opps = [['hinted', 'jev'], ['raw', 'jev'], ['practice', 'bot']];
-  for (const g of ['pd', 'rps', 'ultimatum', 'blotto', 'liarsdice', 'holdem']) {
-    opps.forEach(([m], i) => { add(g, m, '', 'end', '', 'win', '', 40 + 30 * rnd() + i * 15); add(g, m, '', 'end', '', 'lose', '', 55 + 25 * rnd() - i * 10); add(g, m, '', 'end', '', 'draw', '', 8 * rnd()); });
-  }
-  for (let r = 1; r <= 10; r++) {
-    const endgame = r >= 9 ? 0.35 : 0;
-    add('pd', 'hinted', 'human', 'move', `r${r}`, 'C', '', 300 * (0.72 - endgame - r * 0.01));
-    add('pd', 'hinted', 'human', 'move', `r${r}`, 'D', '', 300 * (0.28 + endgame + r * 0.01));
-    [['hinted', 'jev', 0.78, 0.5], ['raw', 'jev', 0.64, 0.15], ['practice', 'bot', 0.7, 0.4]].forEach(([m, a, base, drop]) => {
-      const c = base - (r >= 9 ? drop : 0) + 0.04 * (rnd() - 0.5);
-      add('pd', m, a, 'move', `r${r}`, 'C', '', 120 * c); add('pd', m, a, 'move', `r${r}`, 'D', '', 120 * (1 - c));
-    });
-  }
-  const mix = { human: [0.37, 0.34, 0.29], 'jev-hinted': [0.33, 0.35, 0.32], 'jev-raw': [0.30, 0.41, 0.29], bot: [0.34, 0.33, 0.33] };
-  for (const [k, p] of Object.entries(mix)) {
-    const [m, a] = k === 'human' ? ['hinted', 'human'] : k === 'bot' ? ['practice', 'bot'] : [k.slice(4), 'jev'];
-    ['rock', 'paper', 'scissors'].forEach((act, i) => add('rps', m, a, 'move', 'r1', act, a === 'human' ? '' : (i === 0 ? 'hit' : 'miss'), 900 * p[i]));
-    if (a !== 'human') add('rps', m, a, 'move', 'r2', 'rock', 'hit', 900 * (k === 'jev-hinted' ? 0.1 : 0.05));
-  }
-  const offer = { human: [0.02, 0.05, 0.07, 0.12, 0.22, 0.44, 0.05, 0.01, 0.01, 0, 0.01], 'jev-hinted': [0, 0.01, 0.04, 0.2, 0.42, 0.3, 0.03, 0, 0, 0, 0], 'jev-raw': [0.03, 0.08, 0.14, 0.2, 0.25, 0.26, 0.03, 0.01, 0, 0, 0] };
-  for (const [k, p] of Object.entries(offer)) {
-    const [m, a] = k === 'human' ? ['hinted', 'human'] : [k.slice(4), 'jev'];
-    p.forEach((v, o) => add('ultimatum', m, a, 'move', 'r1', `o${o}`, '', 400 * v));
-  }
-  for (let o = 0; o <= 10; o++) {
-    const hum = Math.min(0.97, 0.05 + o * 0.19), jev = Math.min(0.99, 0.2 + o * 0.16), raw = Math.min(0.99, 0.35 + o * 0.12);
-    [['hinted', 'human', hum], ['hinted', 'jev', jev], ['raw', 'jev', raw]].forEach(([m, a, p]) => { add('ultimatum', m, a, 'move', 'r2', 'accept', String(o), 30 * p); add('ultimatum', m, a, 'move', 'r2', 'reject', String(o), 30 * (1 - p)); });
-  }
-  const shapes = { '4-3-3': [0.26, 0.18, 0.12], '5-3-2': [0.18, 0.2, 0.16], '4-4-2': [0.14, 0.16, 0.14], '5-4-1': [0.1, 0.12, 0.1], '6-2-2': [0.08, 0.1, 0.14], '5-5-0': [0.07, 0.06, 0.1], '6-3-1': [0.06, 0.09, 0.1], '7-2-1': [0.04, 0.04, 0.07] };
-  for (const [shape, [hu, jh, jr]] of Object.entries(shapes)) {
-    add('blotto', 'hinted', 'human', 'move', 'r1', shape, 'win', 500 * hu); add('blotto', 'hinted', 'jev', 'move', 'r1', shape, 'win', 250 * jh); add('blotto', 'raw', 'jev', 'move', 'r1', shape, 'win', 250 * jr);
-  }
-  [['hinted', 'human', 0.31, 0.58], ['hinted', 'jev', 0.18, 0.66], ['raw', 'jev', 0.27, 0.55], ['practice', 'bot', 0.14, 0.7]].forEach(([m, a, bluff, right]) => {
-    add('liarsdice', m, a, 'move', 'raise', 'bid', 'unlikely', 600 * bluff); add('liarsdice', m, a, 'move', 'raise', 'bid', 'likely', 600 * (1 - bluff));
-    add('liarsdice', m, a, 'move', 'raise', 'liar', 'right', 150 * right); add('liarsdice', m, a, 'move', 'raise', 'liar', 'wrong', 150 * (1 - right));
-  });
-  [['hinted', 'human', 0.34, 0.22, 0.3], ['hinted', 'jev', 0.41, 0.17, 0.24], ['raw', 'jev', 0.29, 0.12, 0.33], ['practice', 'bot', 0.38, 0.2, 0.27]].forEach(([m, a, aggr, bl, fold]) => {
-    add('holdem', m, a, 'move', 'flop', 'bet', 'weak', 2000 * aggr * bl); add('holdem', m, a, 'move', 'flop', 'raise', 'strong', 2000 * aggr * (1 - bl));
-    add('holdem', m, a, 'move', 'flop', 'fold', 'weak', 2000 * fold); add('holdem', m, a, 'move', 'flop', 'call', 'medium', 2000 * (1 - aggr - fold));
-  });
-  return rows;
-}
-
 // ---------- page ----------
 export function insightsPage(footer) {
   const lang = settings.get('lang');
@@ -144,10 +113,20 @@ export function insightsPage(footer) {
     privacyCard(),
     footer(),
   );
-  loadStats().then((real) => {
-    const hasReal = real && real.rows.some((r) => r.kind === 'end' && r.n > 0);
-    const data = hasReal ? real : { rows: sampleRows(), sample: true };
-    body.replaceChildren(...render(data, lang));
+  // Jev's two play policies are analysed separately, never mixed. Rows from before policies
+  // existed were all played "by odds".
+  let policy = 'greedy';
+  const draw = (data) => {
+    const rows = data.rows.filter((r) => r.mode === 'practice' || (r.policy || 'sample') === policy);
+    body.replaceChildren(
+      h('div.ins-filter', h('span', t('policy.label')),
+        segmented([{ value: 'greedy', label: t('policy.greedy') }, { value: 'sample', label: t('policy.sample') }], policy, (v) => { policy = v; draw(data); }),
+        h('small.muted', t(`policy.info.${policy}`))),
+      ...render({ ...data, rows }, lang));
+  };
+  loadStats().then((data) => {
+    if (data) draw(data);
+    else body.replaceChildren(h('p.ins-empty', t('ins.offline')));
   });
   return page;
 }
@@ -158,7 +137,7 @@ function render(data, lang) {
   const rows = data.rows;
   const sum = (f) => rows.filter(f).reduce((a, r) => a + r.n, 0);
   const totalMatches = sum((r) => r.kind === 'end');
-  const totalMoves = sum((r) => r.kind === 'move');
+  const totalMoves = sum((r) => r.kind === 'move' && r.detail !== 'pred');
   const winRate = (mode, game) => {
     const f = (act) => sum((r) => r.kind === 'end' && r.mode === mode && r.act === act && (!game || r.game === game));
     const w = f('win'), n = w + f('lose') + f('draw');
@@ -168,21 +147,24 @@ function render(data, lang) {
   const fmtWin = (d) => (d ? `${Math.round(d.v * 100)}%` : '—');
 
   const out = [];
-  if (data.sample) out.push(h('div.ins-sample', t('ins.sample')));
-  else out.push(h('p.ins-updated.muted', t('ins.updated', { time: new Date(data.updated).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en') })));
+  out.push(h('p.ins-updated.muted', t('ins.updated', { time: new Date(data.updated).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en') })));
   out.push(h('div.stats',
     statTile(t('ins.matches'), totalMatches.toLocaleString()),
     statTile(t('ins.moves'), totalMoves.toLocaleString()),
     ...['hinted', 'raw'].map((m) => { const d = winRate(m); return statTile(t('ins.humanWin'), fmtWin(d), t('ins.vs', { opp: oppName(m) })); }),
   ));
 
+  out.push(calibrationSection(rows, series, labels));
+
   for (const g of ['holdem', 'liarsdice', 'blotto', 'pd', 'rps', 'ultimatum']) {
-    const gr = rows.filter((r) => r.game === g);
-    if (!gr.length) continue;
+    const all = rows.filter((r) => r.game === g);
+    const gr = all.filter((r) => r.kind === 'move' && r.detail !== 'pred');
+    const preds = all.filter((r) => r.kind === 'move' && r.detail === 'pred');
     const cnt = (f) => gr.filter(f).reduce((a, r) => a + r.n, 0);
     const rate = (num, den) => (den >= MIN_N ? { v: num / den, n: den } : null);
     const bySeries = (se, f) => cnt((r) => seriesOf(r) === se.key && f(r));
-    const present = series.filter((se) => gr.some((r) => seriesOf(r) === se.key));
+    const withData = series.filter((se) => gr.some((r) => seriesOf(r) === se.key));
+    const present = withData.length ? withData : series; // empty charts still show the full legend
     const charts = [];
 
     if (g === 'pd') {
@@ -190,10 +172,25 @@ function render(data, lang) {
       charts.push(lineChart({ title: t('ins.pd_chart'), note: t('ins.pd_note'), xs, series: present, labels, minN: MIN_N,
         value: (x, se) => rate(bySeries(se, (r) => r.phase === x.key && r.act === 'C'), bySeries(se, (r) => r.phase === x.key)) }));
     }
+    if (g === 'pd') {
+      const cats = [{ key: 'ret', label: t('ins.pd_retaliate') }, { key: 'forg', label: t('ins.pd_forgive') }, { key: 'unp', label: t('ins.pd_unprovoked') }];
+      charts.push(groupedBars({ title: t('ins.pd_ret'), note: t('ins.pd_ret_note'), cats, series: present, labels,
+        value: (c, se) => {
+          const afterD = bySeries(se, (r) => r.detail === 'after_D');
+          if (c.key === 'ret') return rate(bySeries(se, (r) => r.detail === 'after_D' && r.act === 'D'), afterD);
+          if (c.key === 'forg') return rate(bySeries(se, (r) => r.detail === 'after_D' && r.act === 'C'), afterD);
+          return rate(bySeries(se, (r) => r.detail === 'after_C' && r.act === 'D'), bySeries(se, (r) => r.detail === 'after_C'));
+        } }));
+    }
     if (g === 'rps') {
       const cats = ['rock', 'paper', 'scissors'].map((k) => ({ key: k, label: t(`rps.${k}`) }));
       charts.push(groupedBars({ title: t('ins.rps_chart'), note: t('ins.rps_note'), cats, series: present, labels,
         value: (c, se) => rate(bySeries(se, (r) => r.act === c.key), bySeries(se, () => true)) }));
+      const firstSeries = series.filter((se) => se.key !== 'bot');
+      const first = (c, se) => (se.key === 'human'
+        ? rate(gr.filter((r) => r.actor === 'human' && r.phase === 'r1' && r.act === c.key).reduce((a, r) => a + r.n, 0), gr.filter((r) => r.actor === 'human' && r.phase === 'r1').reduce((a, r) => a + r.n, 0))
+        : rate(preds.filter((r) => seriesOf(r) === se.key && r.phase === 'r1' && r.act === c.key).reduce((a, r) => a + r.n, 0), preds.filter((r) => seriesOf(r) === se.key && r.phase === 'r1').reduce((a, r) => a + r.n, 0)));
+      charts.push(groupedBars({ title: t('ins.rps_first'), note: t('ins.rps_first_note'), cats, series: firstSeries, labels, value: first }));
       const hits = present.filter((se) => se.key !== 'human').map((se) => { const d = rate(bySeries(se, (r) => r.detail === 'hit'), bySeries(se, (r) => r.detail === 'hit' || r.detail === 'miss')); return statTile(se.label, fmtWin(d), t('ins.rps_hit')); });
       if (hits.length) charts.push(h('div.stats.small', hits));
     }
@@ -240,10 +237,37 @@ function render(data, lang) {
       h('div.ins-game-head',
         h('span.ins-icon', { html: gameIcon(g, 22) }),
         h('div', h('h2', t(`${g}.title`)), h('div.ins-wins', h('small.muted', t('ins.humanWin')), results))),
+      all.length ? null : h('p.ins-none', t('ins.none')),
       h('div.ins-charts', charts),
     ));
   }
   return out;
+}
+
+function calibrationSection(rows, series, labels) {
+  const cal = rows.filter((r) => r.kind === 'cal');
+  const calSeries = series.filter((se) => se.key !== 'human');
+  const xs = Array.from({ length: 10 }, (_, i) => ({ key: `p${i}`, label: `${i * 10}–${i * 10 + 10}%` }));
+  const count = (se, f) => cal.filter((r) => seriesOf(r) === se.key && f(r)).reduce((a, r) => a + r.n, 0);
+  const value = (x, se) => {
+    const n = count(se, (r) => r.act === x.key);
+    return n >= MIN_N ? { v: count(se, (r) => r.act === x.key && r.detail === 'yes') / n, n } : null;
+  };
+  // expected calibration error: bucket-size-weighted |observed − bucket midpoint|
+  const ece = (se) => {
+    const total = count(se, () => true);
+    if (total < MIN_N * 3) return null;
+    let err = 0;
+    xs.forEach((x, i) => { const n = count(se, (r) => r.act === x.key); if (n) err += (n / total) * Math.abs(count(se, (r) => r.act === x.key && r.detail === 'yes') / n - (i + 0.5) / 10); });
+    return { v: err, n: total };
+  };
+  return h('section.ins-cal',
+    h('h2', t('ins.cal_t')),
+    h('p', t('ins.cal_b')),
+    h('div.stats.small', calSeries.map((se) => { const d = ece(se); return statTile(t('ins.cal_err'), d ? `${(d.v * 100).toFixed(1)} pp` : '—', t('ins.cal_err_sub', { s: se.label })); })),
+    h('div.ins-charts', lineChart({ title: t('ins.cal_chart'), xs, series: calSeries, labels, value, minN: MIN_N,
+      ref: xs.map((_, i) => (i + 0.5) / 10), refLabel: t('ins.cal_ref') })),
+  );
 }
 
 function privacyCard() {
@@ -255,6 +279,6 @@ function privacyCard() {
     h('h2', t('ins.privacy_t')),
     h('p', t('ins.privacy_b')),
     toggle('share', t('ins.share')),
-    toggle('research', t('ins.research'), t('ins.research_note')),
+    toggle('research', t('ins.research')),
   );
 }

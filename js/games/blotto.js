@@ -94,7 +94,7 @@ const sum = (a) => a.reduce((x, y) => x + y, 0);
 
 export default {
   id: 'blotto',
-  meta: { icon: '⚔️', accent: '#e11d48', minutes: 4, version: '1.1' },
+  meta: { icon: '⚔️', accent: '#e11d48', minutes: 4, version: '1.3' },
   strings: {
     en: {
       title: 'Colonel Blotto',
@@ -317,6 +317,8 @@ export default {
       const ph = `r${reveal.round}`;
       track('human', { ph, act: shape(you), x: result > 0 ? 'win' : result < 0 ? 'lose' : 'draw' });
       track('opp', res, { ph, act: shape(jev), x: result < 0 ? 'win' : result > 0 ? 'lose' : 'draw' });
+      const pStack = res.answers?.opp_stacks?.noul;
+      if (typeof pStack === 'number') track('cal', res, { ph: 'opp_stacks', p: pStack, truth: Math.max(...you) >= 5 });
       phase = 'reveal';
       render();
       const quick = reducedMotion();

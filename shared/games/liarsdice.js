@@ -1,13 +1,16 @@
 // Liar's Dice (heads-up) — Jev plays one side.
 //
-// Two request builders (see shared/prompts.js):
-//   hinted (default): all probability work happens in the browser
-//     (js/games/liarsdice-core.js); Jev sees its own dice, the bidding so far and a
-//     likelihood *word* for every candidate action plus the opponent's bluffing style.
-//   raw: no code-computed evaluation at all — only Jev's dice, the dice counts, the
-//     rules, this round's full bid history, the results of earlier rounds and the
-//     legal options described literally.
-// Both use the same option ids ('challenge', 'b0'..'b9') and the main question id 'action'.
+// Clean ablation (see shared/prompts.js):
+//   raw  = base(): rules, neutral goal, Jev's own dice (1s marked wild — a rule, not
+//          analysis), dice counts, this round's full bid history, the results of earlier
+//          rounds and the legal options described literally.
+//   hinted = the identical base + `state.analysis` (opponent bluffing style, how many of
+//          the current bid's dice Jev holds and its likelihood judged from Jev's own dice)
+//          + an " Analysis: …" suffix on each option (own matching dice, likelihood word).
+//   All probability work happens in the browser (js/games/liarsdice-core.js); the hinted
+//   payload is the raw record + opp_style / current_likelihood / per-option likelihood.
+// Both modes use the same candidate option set (same ids 'challenge', 'b0'..'b9') and the
+// main question id 'action'.
 import { S, SchemaError } from '../schema.js';
 
 const LIKELIHOOD = S.enumv('certain', 'very_likely', 'likely', 'coin_flip', 'unlikely', 'very_unlikely', 'impossible');
@@ -44,98 +47,11 @@ const RULES = [
 
 const diceWord = (n) => (n === 1 ? 'die' : 'dice');
 const bidText = (qty, face) => `at least ${qty} ${diceWord(qty)} showing ${FACE_NAME[face]}`;
-const matchText = (n) => (n === 0 ? 'none of them yourself' : n === 1 ? 'one of them yourself' : `${n} of them yourself`);
+const matchText = (n) => (n === 0 ? 'none of them' : n === 1 ? 'one of them' : `${n} of them`);
 const isHigher = (a, b) => a.qty > b.qty || (a.qty === b.qty && a.face > b.face);
 
-/** Shared consistency checks for the option list (the flat schema cannot express them). */
-function checkOptions(options, current, total, needLikelihood) {
-  if (!options.length) throw new SchemaError('payload.options: empty');
-  const ids = new Set();
-  for (const o of options) {
-    if (ids.has(o.id)) throw new SchemaError('payload.options: duplicate id');
-    ids.add(o.id);
-    if (o.id === 'challenge') {
-      if (!current) throw new SchemaError('payload.options: challenge without a bid');
-      if (o.qty !== undefined || o.face !== undefined || o.likelihood !== undefined) throw new SchemaError('payload.options: challenge with bid fields');
-    } else {
-      if (o.qty === undefined || o.face === undefined || (needLikelihood && o.likelihood === undefined)) {
-        throw new SchemaError('payload.options: bid option incomplete');
-      }
-      if (o.qty > total || (current && !isHigher(o, current))) throw new SchemaError('payload.options: illegal bid');
-    }
-  }
-}
-
-// ---------------------------------------------------------------- hinted ----
-
-const HINTED_SCHEMA = S.obj({
-  jev_dice: S.list(DIE, 5),
-  opp_dice_count: S.int(1, 5),
-  current_bid: S.optional(S.obj({ qty: QTY, face: FACE, likelihood: LIKELIHOOD })),
-  history: S.list(S.obj({ by: WHO, qty: QTY, face: FACE }), 12),
-  opp_style: S.enumv('unknown', 'honest', 'bluffs_sometimes', 'bluffs_often'),
-  options: S.list(S.obj({
-    id: S.enumv(OPTION_IDS),
-    qty: S.optional(QTY),
-    face: S.optional(FACE),
-    likelihood: S.optional(LIKELIHOOD),
-  }), 11),
-});
-
-function buildHinted({ jev_dice, opp_dice_count, current_bid, history, opp_style, options }) {
-  if (jev_dice.length < 1) throw new SchemaError('payload.jev_dice: empty');
-  checkOptions(options, current_bid, jev_dice.length + opp_dice_count, true);
-
-  const mine = jev_dice.length;
-  const count = (face) => jev_dice.filter((d) => d === face || d === 1).length;
-  const wilds = jev_dice.filter((d) => d === 1).length;
-
-  const state = {
-    game: "Liar's Dice, heads-up, between you and one opponent. Each player rolls their dice secretly under a cup.",
-    rules: RULES,
-    goal: 'Win the match: lose dice as rarely as possible. Bid what is probably true, occasionally bluff, and call Liar when the opponent overreaches.',
-    your_dice: `${jev_dice.join(', ')}${wilds ? ` (the ${wilds === 1 ? '1 is' : `${wilds} ones are`} wild)` : ''}`,
-    dice_left: `You have ${mine} ${diceWord(mine)}; the opponent has ${opp_dice_count} hidden ${diceWord(opp_dice_count)}.`,
-    match_status: mine > opp_dice_count ? 'You are ahead on dice.' : mine < opp_dice_count ? 'You are behind on dice.' : 'Dice are level.',
-    opponent_style: STYLE_WORDS[opp_style],
-    bids_this_round: history.length
-      ? history.map((b) => `${b.by === 'jev' ? 'You' : 'Opponent'} bid ${bidText(b.qty, b.face)}`)
-      : ['(none before the current bid)'],
-    current_bid: current_bid
-      ? `The opponent just bid ${bidText(current_bid.qty, current_bid.face)}. You hold ${matchText(count(current_bid.face))}. Judging only from your own dice, their bid is ${LIKELY_WORDS[current_bid.likelihood]}. Their bid may also hint at what they hold.`
-      : 'No bid yet: you open this round.',
-  };
-
-  const criteria = {};
-  for (const o of options) {
-    criteria[o.id] = o.id === 'challenge'
-      ? `Call Liar: challenge the opponent's bid of ${bidText(current_bid.qty, current_bid.face)}. You estimate their bid is ${LIKELY_WORDS[current_bid.likelihood]}. Good when their bid is probably false.`
-      : `Bid ${bidText(o.qty, o.face)} (1s count as ${FACE_NAME[o.face]}). You hold ${matchText(count(o.face))}; you estimate this bid is ${LIKELY_WORDS[o.likelihood]}. The opponent may call Liar on it.`;
-  }
-
-  const questions = {
-    action: {
-      type: 'choice',
-      instructions: current_bid
-        ? 'Raise the bid or call Liar? Pick the action that best protects your dice and wins the match.'
-        : 'Which opening bid should you make? Pick the action that best protects your dice and wins the match.',
-      criteria,
-    },
-  };
-  if (current_bid) {
-    questions.opp_bluffing = {
-      type: 'noul',
-      instructions: `Is the opponent's current bid (${bidText(current_bid.qty, current_bid.face)}) a bluff, meaning fewer dice actually show ${FACE_NAME[current_bid.face]} (counting 1s) than they claim?`,
-    };
-  }
-  return { state, questions };
-}
-
-// ------------------------------------------------------------------- raw ----
-// Raw record only. No likelihoods, no style bucket, no counts of Jev's matching dice.
-
 const BID = S.obj({ by: WHO, qty: QTY, face: FACE });
-const RAW_SCHEMA = S.obj({
+const RAW_FIELDS = {
   jev_dice: S.list(DIE, 5),
   opp_dice_count: S.int(1, 5),
   // Every bid of this round in order; the last one (if any) is the opponent's current bid.
@@ -149,18 +65,20 @@ const RAW_SCHEMA = S.obj({
     loser: WHO,                     // who lost a die
     opp_dice: S.list(DIE, 5),       // the opponent's dice revealed at the end of that round
   }), 9),
-  options: S.list(S.obj({
-    id: S.enumv(OPTION_IDS),
-    qty: S.optional(QTY),
-    face: S.optional(FACE),
-  }), 11),
+};
+const RAW_OPTION = { id: S.enumv(OPTION_IDS), qty: S.optional(QTY), face: S.optional(FACE) };
+
+const RAW_SCHEMA = S.obj({ ...RAW_FIELDS, options: S.list(S.obj(RAW_OPTION), 11) });
+// Hinted payload = the raw record + code-computed likelihood / style buckets.
+const HINTED_SCHEMA = S.obj({
+  ...RAW_FIELDS,
+  options: S.list(S.obj({ ...RAW_OPTION, likelihood: S.optional(LIKELIHOOD) }), 11),
+  opp_style: S.enumv(Object.keys(STYLE_WORDS)),
+  current_likelihood: S.optional(LIKELIHOOD), // required iff there is a current bid
 });
 
-const who = (by) => (by === 'jev' ? 'You' : 'The opponent');
-const whose = (by) => (by === 'jev' ? 'your' : "the opponent's");
-const shortBid = (b) => `${b.qty} × ${b.face}`;
-
-function buildRaw({ jev_dice, opp_dice_count, bids, past_rounds, options }) {
+/** Consistency checks the flat schema cannot express. Returns the current bid or null. */
+function validate({ jev_dice, opp_dice_count, bids, past_rounds, options }, hintedMode) {
   if (jev_dice.length < 1) throw new SchemaError('payload.jev_dice: empty');
   const total = jev_dice.length + opp_dice_count;
   for (let i = 0; i < bids.length; i++) {
@@ -175,20 +93,46 @@ function buildRaw({ jev_dice, opp_dice_count, bids, past_rounds, options }) {
     const expected = r.actual >= r.bid.qty ? r.called_by : r.bid.by;
     if (r.loser !== expected || r.opp_dice.length < 1) throw new SchemaError('payload.past_rounds: inconsistent result');
   }
-  checkOptions(options, current, total, false);
+  if (!options.length) throw new SchemaError('payload.options: empty');
+  const ids = new Set();
+  for (const o of options) {
+    if (ids.has(o.id)) throw new SchemaError('payload.options: duplicate id');
+    ids.add(o.id);
+    if (o.id === 'challenge') {
+      if (!current) throw new SchemaError('payload.options: challenge without a bid');
+      if (o.qty !== undefined || o.face !== undefined || o.likelihood !== undefined) throw new SchemaError('payload.options: challenge with bid fields');
+    } else {
+      if (o.qty === undefined || o.face === undefined || (hintedMode && o.likelihood === undefined)) {
+        throw new SchemaError('payload.options: bid option incomplete');
+      }
+      if (o.qty > total || (current && !isHigher(o, current))) throw new SchemaError('payload.options: illegal bid');
+    }
+  }
+  return current;
+}
 
+const who = (by) => (by === 'jev' ? 'You' : 'The opponent');
+const whose = (by) => (by === 'jev' ? 'your' : "the opponent's");
+
+/** Shared base: rules, neutral goal, own dice, counts, full bidding record, literal options. */
+function base(p) {
+  const current = validate(p, false);
+  const { jev_dice, opp_dice_count, bids, past_rounds, options } = p;
   const mine = jev_dice.length;
+  const total = mine + opp_dice_count;
+  const dice = [...jev_dice].sort((a, b) => a - b);
   const state = {
     game: "Liar's Dice, heads-up, between you and one opponent. Each player rolls their dice secretly under a cup.",
     rules: RULES,
-    goal: 'Win the match by making the opponent lose all their dice before you lose yours.',
-    your_dice: jev_dice.join(', '),
+    goal: 'Win the match: make the opponent lose all their dice before you lose yours.',
+    round: `Round ${past_rounds.length + 1} of the match.`,
+    your_dice: `${dice.join(', ')}${dice.includes(1) ? ' (1s are wild)' : ''}`,
     dice_count: `You have ${mine} ${diceWord(mine)}. The opponent has ${opp_dice_count} hidden ${diceWord(opp_dice_count)}. ${total} dice in total.`,
     bids_this_round: bids.length
       ? bids.map((b, i) => `${i + 1}. ${who(b.by)} bid ${bidText(b.qty, b.face)}.`)
       : ['No bids yet: you open this round.'],
     current_bid: current
-      ? `The opponent's bid of ${shortBid(current)} (${bidText(current.qty, current.face)}) stands. You must raise it or call Liar.`
+      ? `The opponent's bid of ${bidText(current.qty, current.face)} stands. You must raise it or call Liar.`
       : 'No bid yet: you open this round.',
     previous_rounds: past_rounds.length
       ? past_rounds.map((r, i) => `Round ${i + 1}: ${who(r.called_by)} called Liar on ${whose(r.bid.by)} bid of ${bidText(r.bid.qty, r.bid.face)}. `
@@ -200,16 +144,14 @@ function buildRaw({ jev_dice, opp_dice_count, bids, past_rounds, options }) {
   const criteria = {};
   for (const o of options) {
     criteria[o.id] = o.id === 'challenge'
-      ? `Call Liar on the opponent's bid of ${shortBid(current)} (${bidText(current.qty, current.face)}).`
+      ? `Call Liar on the opponent's bid of ${bidText(current.qty, current.face)}.`
       : `Bid ${bidText(o.qty, o.face)}.`;
   }
 
   const questions = {
     action: {
       type: 'choice',
-      instructions: current
-        ? 'Raise the bid or call Liar? Pick the action that best protects your dice and wins the match.'
-        : 'Which opening bid should you make? Pick the action that best protects your dice and wins the match.',
+      instructions: current ? 'Do you raise the bid or call Liar?' : 'Which opening bid do you make?',
       criteria,
     },
   };
@@ -222,8 +164,36 @@ function buildRaw({ jev_dice, opp_dice_count, bids, past_rounds, options }) {
   return { state, questions };
 }
 
+function hinted(p) {
+  const current = validate(p, true);
+  if (!!current !== (p.current_likelihood !== undefined)) throw new SchemaError('payload.current_likelihood: does not match the bids');
+  const req = base({
+    jev_dice: p.jev_dice,
+    opp_dice_count: p.opp_dice_count,
+    bids: p.bids,
+    past_rounds: p.past_rounds,
+    options: p.options.map(({ id, qty, face }) => ({ id, qty, face })),
+  });
+  const count = (face) => p.jev_dice.filter((d) => d === face || d === 1).length;
+  const mine = p.jev_dice.length;
+  req.state.analysis = {
+    opponent_style: STYLE_WORDS[p.opp_style],
+    dice_balance: mine > p.opp_dice_count ? 'You are ahead on dice.' : mine < p.opp_dice_count ? 'You are behind on dice.' : 'Dice are level.',
+    current_bid: current
+      ? `You hold ${matchText(count(current.face))} yourself. Judging only from your own dice, the opponent's bid is ${LIKELY_WORDS[p.current_likelihood]}.`
+      : 'No bid yet.',
+  };
+  const crit = req.questions.action.criteria;
+  for (const o of p.options) {
+    crit[o.id] += o.id === 'challenge'
+      ? ` Analysis: you hold ${matchText(count(current.face))}; judging only from your own dice, their bid is ${LIKELY_WORDS[p.current_likelihood]}.`
+      : ` Analysis: you hold ${matchText(count(o.face))} (1s count as ${FACE_NAME[o.face]}); judging only from your own dice, this bid is ${LIKELY_WORDS[o.likelihood]}.`;
+  }
+  return req;
+}
+
 export default {
   schema: HINTED_SCHEMA,
-  build: buildHinted,
-  raw: { schema: RAW_SCHEMA, build: buildRaw },
+  build: hinted,
+  raw: { schema: RAW_SCHEMA, build: base },
 };

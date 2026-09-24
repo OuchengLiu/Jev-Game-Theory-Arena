@@ -67,7 +67,7 @@ const ICON = {
 
 export default {
   id: 'ultimatum',
-  meta: { icon: 'scale', accent: '#0ea5e9', minutes: 3, version: '1.1' },
+  meta: { icon: 'scale', accent: '#0ea5e9', minutes: 3, version: '1.3' },
   strings: {
     en: {
       title: 'Ultimatum Game',

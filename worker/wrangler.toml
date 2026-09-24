@@ -13,6 +13,8 @@ IP_DAILY_LIMIT = "600"
 # Invalid requests per visitor per day before a temporary block (normal play never sends any).
 MAX_INVALID = "20"
 BLOCK_HOURS = "24"
+# Set to "1" to include short error details in responses while debugging a deployment.
+DEBUG = "0"
 
 # Jev runs through Cloudflare Workers AI (model "typesafe/jev") — no TypeSafe key needed.
 [ai]

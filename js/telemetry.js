@@ -6,6 +6,7 @@
 import { CONFIG } from './config.js';
 import { VERSION } from './version.js';
 import { settings, effectiveMode } from './settings.js';
+import { bucketOf } from '../shared/telemetry.js';
 
 const endpoint = () => (CONFIG.proxyUrl ? CONFIG.proxyUrl.replace(/\/decide\/?$/, '/log') : '');
 export const sharingEnabled = () => settings.get('share') !== false && Boolean(endpoint());
@@ -32,15 +33,29 @@ function flush({ beacon = false } = {}) {
 
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush({ beacon: true }); });
 
+// The opponent's full distribution for the main decision, plus its yes/no judgements.
+// Skipped for x:'pred' events (a prediction record, not a decision) to avoid duplicates.
+const MAIN = ['action', 'predict', 'offer', 'respond'];
+function probsOf(res, e) {
+  if (!res?.answers || e?.x === 'pred') return {};
+  const out = {};
+  const main = MAIN.map((k) => res.answers[k]).find((a) => a?.probabilities);
+  if (main) out.pr = Object.fromEntries(Object.entries(main.probabilities).slice(0, 70).map(([k, v]) => [k, Math.round(Number(v) * 1000) / 1000]));
+  const nouls = Object.entries(res.answers).filter(([, a]) => a?.type === 'noul' && typeof a.noul === 'number').slice(0, 4);
+  if (nouls.length) out.nl = Object.fromEntries(nouls.map(([k, a]) => [k, Math.round(a.noul * 1000) / 1000]));
+  return out;
+}
+
 /**
  * Per-game tracker. Games call:
  *   track.start()                                   new match (fresh anonymous id)
  *   track.human({ ph, act, x })                     the human's move
  *   track.opp(res, { ph, act, x })                  the opponent's move; res = decide() result
+ *   track.cal(res, { ph, p, truth })                calibration: opponent's yes/no probability vs outcome
  *   track.end('win' | 'lose' | 'draw')              match over (human's point of view)
  */
 export function createTracker(game, gameVersion = '1.0') {
-  const base = () => ({ g: game, gv: gameVersion, m: effectiveMode() });
+  const base = () => { const m = effectiveMode(); return { g: game, gv: gameVersion, m, ...(m !== 'practice' ? { pol: settings.get('policy') } : {}) }; };
   const push = (ev) => {
     if (!sharingEnabled()) return;
     for (const k of Object.keys(ev)) if (ev[k] === undefined || ev[k] === null) delete ev[k];
@@ -52,7 +67,13 @@ export function createTracker(game, gameVersion = '1.0') {
     human(e) { push({ ...base(), k: 'move', a: 'human', ...e }); },
     opp(res, e) {
       const jev = res?.source === 'jev';
-      push({ ...base(), k: 'move', a: jev ? 'jev' : 'bot', ...(jev && res.model ? { mdl: String(res.model).toLowerCase() } : {}), ...e });
+      push({ ...base(), k: 'move', a: jev ? 'jev' : 'bot', ...(jev && res.model ? { mdl: String(res.model).toLowerCase() } : {}), ...probsOf(res, e), ...e });
+    },
+    /** Calibration: the opponent's probability p (0..1) for yes/no question `ph`, and whether it came true. */
+    cal(res, { ph, p, truth }) {
+      if (typeof p !== 'number' || Number.isNaN(p) || typeof truth !== 'boolean') return;
+      const jev = res?.source === 'jev';
+      push({ ...base(), k: 'cal', a: jev ? 'jev' : 'bot', ...(jev && res.model ? { mdl: String(res.model).toLowerCase() } : {}), ph, act: bucketOf(p), x: truth ? 'yes' : 'no' });
     },
     end(result) { push({ ...base(), k: 'end', act: result }); flush(); matchId = newId(); },
   };

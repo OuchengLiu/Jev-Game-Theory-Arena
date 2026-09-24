@@ -2,8 +2,11 @@
 // role 'propose': Jev chooses how many coins to offer the human.
 // role 'respond': Jev accepts or rejects the human's offer.
 //
-// Every comparison ("has the human accepted this little before?") is done here in code
-// and written into the literal criteria of each option.
+// Clean ablation (see shared/prompts.js): base() builds the Raw request from the record;
+// Hinted = that identical base + `state.analysis` (profile of the opponent's past
+// proposals/responses, rounds remaining) + an " Analysis: …" suffix on each option (the
+// fairness bucket of the split and what the opponent's past responses say about it).
+// Both modes take the same payload.
 import { S, SchemaError } from '../schema.js';
 
 export const POT = 10;
@@ -40,14 +43,14 @@ export function profile(history) {
 export function evidenceFor(k, p) {
   const acc = p.minAccepted !== null && k >= p.minAccepted;
   const rej = p.maxRejected !== null && k <= p.maxRejected;
-  if (acc && rej) return 'mixed evidence: the human has both accepted and rejected offers around this size';
-  if (acc) return k === p.minAccepted ? 'the human has accepted exactly this offer before' : 'the human has accepted smaller offers than this before, so they will very likely accept';
-  if (rej) return k === p.maxRejected ? 'the human has rejected exactly this offer before' : 'the human has rejected larger offers than this before, so they will likely reject';
-  return 'untested: no evidence yet how the human responds to this amount';
+  if (acc && rej) return 'mixed evidence: the opponent has both accepted and rejected offers around this size';
+  if (acc) return k === p.minAccepted ? 'the opponent has accepted exactly this offer before' : 'the opponent has accepted smaller offers than this before, so they will very likely accept';
+  if (rej) return k === p.maxRejected ? 'the opponent has rejected exactly this offer before' : 'the opponent has rejected larger offers than this before, so they will likely reject';
+  return 'untested: no evidence yet how the opponent responds to this amount';
 }
 
 function proposerStyle(p) {
-  if (p.avgOffer === null) return 'unknown (the human has not proposed yet)';
+  if (p.avgOffer === null) return 'unknown (the opponent has not proposed yet)';
   if (p.avgOffer >= 5) return 'fair or generous: offers you about half or more';
   if (p.avgOffer >= 4) return 'nearly fair: offers you a bit less than half';
   if (p.avgOffer >= 2.5) return 'stingy: keeps most of the pot';
@@ -61,11 +64,9 @@ function responderStyle(p) {
   return 'accepts some offers and rejects others, depending on size';
 }
 
-function roundStatus(round, total) {
+function roundsRemaining(round, total) {
   const left = total - round;
-  if (left === 0) return 'This is the FINAL round; there is no future reputation to protect.';
-  if (left <= 2) return `Only ${left} round(s) remain after this one.`;
-  return 'Several rounds remain; reputation still matters.';
+  return left === 0 ? 'This is the final round.' : `${left} round${left === 1 ? '' : 's'} remain after this one.`;
 }
 
 const SCHEMA = S.obj({
@@ -78,30 +79,30 @@ const SCHEMA = S.obj({
 
 const coinsWord = (k) => `${k} coin${k === 1 ? '' : 's'}`;
 
-// ---------- Raw mode: the bare record, no fairness words, profiles or evidence ----------
-function buildRaw({ role, round, total, offer, history }) {
+/** Shared base: rules, neutral goal, round, role, score, full record, literal options. */
+function base({ role, round, total, offer, history }) {
   if (round > total || round !== history.length + 1) throw new SchemaError('payload.round: inconsistent with history');
   if (role === 'respond' && offer === undefined) throw new SchemaError('payload.offer: missing');
   if (role === 'propose' && offer !== undefined) throw new SchemaError('payload.offer: unexpected');
   let you = 0;
-  let human = 0;
+  let opp = 0;
   const rounds = history.map((r, i) => {
     const toJev = r.accepted ? (r.proposer === 'human' ? r.offer : POT - r.offer) : 0;
-    const toHuman = r.accepted ? (r.proposer === 'human' ? POT - r.offer : r.offer) : 0;
+    const toOpp = r.accepted ? (r.proposer === 'human' ? POT - r.offer : r.offer) : 0;
     you += toJev;
-    human += toHuman;
+    opp += toOpp;
     const what = r.proposer === 'jev'
-      ? `you proposed, offering the human ${r.offer} and keeping ${POT - r.offer}; the human ${r.accepted ? 'accepted' : 'rejected'}`
-      : `the human proposed, offering you ${r.offer} and keeping ${POT - r.offer}; you ${r.accepted ? 'accepted' : 'rejected'}`;
-    return `Round ${i + 1}: ${what}. You got ${toJev}, the human got ${toHuman}.`;
+      ? `you proposed, offering the opponent ${r.offer} and keeping ${POT - r.offer}; the opponent ${r.accepted ? 'accepted' : 'rejected'}`
+      : `the opponent proposed, offering you ${r.offer} and keeping ${POT - r.offer}; you ${r.accepted ? 'accepted' : 'rejected'}`;
+    return `Round ${i + 1}: ${what}. You got ${toJev}, the opponent got ${toOpp}.`;
   });
   const state = {
-    game: `Repeated Ultimatum Game between you and a human, ${total} rounds, roles alternate. Each round a pot of ${POT} coins is split: the proposer offers some coins to the responder; if the responder accepts, both get their share; if the responder rejects, both get nothing.`,
-    goal: 'Maximise YOUR total coins over all rounds.',
+    game: `Repeated Ultimatum Game between you and one opponent, ${total} rounds, roles alternate. Each round a pot of ${POT} coins is split: the proposer offers some coins to the responder; if the responder accepts, both get their share; if the responder rejects, both get nothing.`,
+    goal: 'Maximise your total coins over all rounds.',
     round: `Round ${round} of ${total}.`,
-    your_role: role === 'propose' ? 'You are the PROPOSER this round; the human responds.' : 'You are the RESPONDER this round; the human proposed.',
+    your_role: role === 'propose' ? 'You are the PROPOSER this round; the opponent responds.' : 'You are the RESPONDER this round; the opponent proposed.',
+    score: { you, opponent: opp },
     history: rounds.length ? rounds : ['No rounds played yet.'],
-    score: { you, human },
   };
   if (role === 'propose') {
     return {
@@ -109,106 +110,69 @@ function buildRaw({ role, round, total, offer, history }) {
       questions: {
         offer: {
           type: 'choice',
-          instructions: 'How many coins do you offer the human?',
+          instructions: 'How many coins do you offer the opponent?',
           criteria: Object.fromEntries(OFFERS.map((s) => {
             const k = Number(s);
-            return [s, `Offer ${coinsWord(k)}, keep ${POT - k}`];
+            return [s, `Offer ${coinsWord(k)}, keep ${POT - k}.`];
           })),
         },
         human_rejects_unfair: {
           type: 'noul',
-          instructions: 'Is this human the kind of player who rejects low offers, even at a cost to themselves?',
+          instructions: 'Is this opponent the kind of player who rejects low offers, even at a cost to themselves?',
         },
       },
     };
   }
-  state.offer_on_the_table = `The human offers you ${coinsWord(offer)} and keeps ${POT - offer}.`;
+  state.offer_on_the_table = `The opponent offers you ${coinsWord(offer)} and keeps ${POT - offer}.`;
   return {
     state,
     questions: {
       respond: {
         type: 'choice',
-        instructions: 'Do you accept or reject the human\'s offer?',
-        criteria: { accept: 'Accept the offer', reject: 'Reject the offer' },
+        instructions: "Do you accept or reject the opponent's offer?",
+        criteria: {
+          accept: `Accept: you get ${coinsWord(offer)}, the opponent gets ${POT - offer}.`,
+          reject: 'Reject: both get 0 coins this round.',
+        },
       },
       fair: {
         type: 'noul',
-        instructions: 'Is the human\'s offer fair?',
+        instructions: "Is the opponent's offer fair?",
       },
     },
   };
 }
 
+function hinted(payload) {
+  const req = base(payload);
+  const { role, round, total, offer, history } = payload;
+  const p = profile(history);
+  if (role === 'propose') {
+    req.state.analysis = {
+      rounds_remaining: roundsRemaining(round, total),
+      opponent_as_responder: responderStyle(p),
+      opponent_lowest_accepted_offer: p.minAccepted === null ? 'none yet' : coinsWord(p.minAccepted),
+      opponent_highest_rejected_offer: p.maxRejected === null ? 'none yet' : coinsWord(p.maxRejected),
+    };
+    const crit = req.questions.offer.criteria;
+    for (const s of OFFERS) {
+      const k = Number(s);
+      crit[s] += ` Analysis: ${fairness(k)}. Evidence: ${evidenceFor(k, p)}.`;
+    }
+    return req;
+  }
+  req.state.analysis = {
+    rounds_remaining: roundsRemaining(round, total),
+    offer_fairness: `This offer is ${fairness(offer)}.`,
+    opponent_as_proposer: proposerStyle(p),
+    your_past_rejections: p.jevRejections === 0 ? 'You have not rejected any offer yet.' : `You have rejected ${p.jevRejections} offer${p.jevRejections === 1 ? '' : 's'} before.`,
+  };
+  req.questions.respond.criteria.accept += ` Analysis: ${fairness(offer)}.`;
+  return req;
+}
+
 export default {
   schema: SCHEMA,
-  raw: { schema: SCHEMA, build: buildRaw },
-
-  build({ role, round, total, offer, history }) {
-    const p = profile(history);
-    const recent = history.map((r, i) => (r.proposer === 'jev'
-      ? `Round ${i + 1}: you offered the human ${r.offer}; the human ${r.accepted ? 'accepted' : 'rejected'}.`
-      : `Round ${i + 1}: the human offered you ${r.offer}; you ${r.accepted ? 'accepted' : 'rejected'}.`));
-    const base = {
-      game: `Repeated Ultimatum Game between you and a human, ${total} rounds, roles alternate. Each round a pot of ${POT} coins is split: the proposer offers some coins to the responder; if the responder accepts, both get their share; if the responder rejects, both get nothing.`,
-      goal: 'Maximise YOUR total coins over all rounds.',
-      round_status: `Round ${round} of ${total}. ${roundStatus(round, total)}`,
-    };
-
-    if (role === 'propose') {
-      const state = {
-        ...base,
-        your_role: 'You are the PROPOSER this round. The human decides whether to accept.',
-        human_as_responder: responderStyle(p),
-        human_lowest_accepted_offer: p.minAccepted === null ? 'none yet' : `${p.minAccepted} coins`,
-        human_highest_rejected_offer: p.maxRejected === null ? 'none yet' : `${p.maxRejected} coins`,
-        history: recent.length ? recent : ['No rounds played yet.'],
-      };
-      return {
-        state,
-        questions: {
-          offer: {
-            type: 'choice',
-            instructions: 'How many coins should you offer the human to maximise your own expected coins? A rejected offer gives you nothing.',
-            criteria: Object.fromEntries(OFFERS.map((s) => {
-              const k = Number(s);
-              return [s, `Offer ${k} coin${k === 1 ? '' : 's'} and keep ${POT - k}: ${fairness(k)}. Evidence: ${evidenceFor(k, p)}.`];
-            })),
-          },
-          human_rejects_unfair: {
-            type: 'noul',
-            instructions: 'Is this human the kind of player who rejects offers they consider unfair, even at a cost to themselves?',
-          },
-        },
-      };
-    }
-
-    if (offer === undefined) throw new SchemaError('payload.offer: missing');
-    const state = {
-      ...base,
-      your_role: 'You are the RESPONDER this round.',
-      offer_on_the_table: `The human offers you ${offer} of ${POT} coins and keeps ${POT - offer}. This is ${fairness(offer)}.`,
-      if_you_accept: offer === 0 ? 'You get 0 coins; the human gets 10.' : `You get ${offer} coins; the human gets ${POT - offer}.`,
-      if_you_reject: `You both get 0 coins this round.${round < total ? ' Rejecting may teach the human to offer more in later rounds.' : ''}`,
-      human_as_proposer: proposerStyle(p),
-      your_past_rejections: p.jevRejections === 0 ? 'you have not rejected any offer yet' : 'you have rejected at least one offer before',
-      history: recent.length ? recent : ['No rounds played yet.'],
-    };
-    return {
-      state,
-      questions: {
-        respond: {
-          type: 'choice',
-          instructions: 'Should you accept or reject the human\'s offer, to maximise your own total coins over the whole game?',
-          criteria: {
-            accept: `Accept: take the ${offer} coin${offer === 1 ? '' : 's'} offered now.`,
-            reject: 'Reject: both get nothing this round; punishes a stingy offer and signals you will not accept such offers in future.',
-          },
-        },
-        fair: {
-          type: 'noul',
-          instructions: 'Is the human\'s offer fair?',
-        },
-      },
-    };
-  },
+  build: hinted,
+  raw: { schema: SCHEMA, build: base },
 };

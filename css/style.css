@@ -313,6 +313,8 @@ button { font: inherit; color: inherit; }
 .mode-control .seg button { padding: 8px 18px; }
 .mode-control .seg button:not(.on):not(:disabled):hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .mode-control .seg button.on { background: var(--accent); color: #fff; }
+.policy-control.off { opacity: .45; }
+.pop-sep { height: 1px; margin: 4px 0 12px; background: var(--border); }
 .mode-hint { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--muted); opacity: .85; }
 .vs-badge { font-weight: 600; color: var(--text); background: var(--surface); border: 1px solid var(--border); }
 .vs-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--s-bot); }
@@ -343,6 +345,18 @@ button { font: inherit; color: inherit; }
 .think-title { display: flex; align-items: center; gap: 8px; font-weight: 700; }
 .mode-chip { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; padding: 2px 8px; border-radius: 99px; color: var(--muted); border: 1px solid var(--border-strong); }
 .think-meta { font-family: var(--mono); font-size: 11px; color: var(--muted); text-align: right; }
+.think-head { flex-wrap: wrap; }
+.think-tools { display: flex; align-items: center; gap: 8px; }
+.think-caption { flex-basis: 100%; font-size: 12px; color: var(--muted); margin-top: -2px; }
+.eye-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; transition: .2s var(--ease); }
+.eye-btn:hover { color: var(--text); border-color: var(--border-strong); }
+.think-body { position: relative; }
+.think-cover { display: none; }
+.odds-hidden .think-body > :not(.think-cover) { filter: blur(7px); opacity: .55; pointer-events: none; user-select: none; }
+.odds-hidden .think-cover { display: grid; place-items: center; position: absolute; inset: 0; z-index: 2; }
+.odds-hidden .think-cover span { padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--text); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); cursor: default; }
+/* game boards that visualise Jev's odds follow the same switch */
+.odds-hidden .rps-plot > :not(figcaption), .odds-hidden .rps-mix, .odds-hidden .rps-guess { filter: blur(6px); opacity: .5; pointer-events: none; user-select: none; }
 .think-empty { color: var(--muted); font-size: 14px; margin: 0; }
 .think-q { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
 .pulse { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
@@ -404,6 +418,10 @@ button { font: inherit; color: inherit; }
 /* ---------- about ---------- */
 .prose h2 { font-family: var(--font-display); font-weight: 600; font-size: 24px; margin-top: 40px; }
 .prose p { color: var(--muted); font-size: 16px; line-height: 1.75; }
+.method { display: grid; grid-template-columns: 170px 1fr; gap: 14px 24px; margin: 0; }
+.method dt { font-weight: 650; font-size: 15px; padding-top: 2px; }
+.method dd { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.7; }
+@media (max-width: 640px) { .method { grid-template-columns: 1fr; gap: 4px; } .method dd { margin-bottom: 12px; } }
 .mode-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; }
 .mode-card { padding: 18px 20px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border); }
 .mode-card b { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
@@ -464,6 +482,9 @@ button { font: inherit; color: inherit; }
   border: 1px dashed color-mix(in srgb, var(--gold) 55%, var(--border));
 }
 .ins-updated { font-size: 13px; margin-bottom: 14px; }
+.ins-filter { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; font-size: 13px; font-weight: 600; }
+.ins-filter small { font-weight: 400; max-width: 560px; }
+.ins-none, .ins-empty { margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; font-size: 13px; color: var(--muted); background: var(--surface-2); }
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 30px; }
 .stats.small { grid-template-columns: repeat(3, 1fr); margin: 4px 0 0; }
 @media (max-width: 760px) { .stats, .stats.small { grid-template-columns: repeat(2, 1fr); } }
@@ -499,6 +520,11 @@ button { font: inherit; color: inherit; }
 .viz-svg:has(.viz-bar.on) .viz-bar:not(.on) { opacity: .45; }
 .viz-dot { stroke: var(--surface); stroke-width: 2; }
 .viz-cross { stroke: var(--muted); stroke-dasharray: 3 3; stroke-width: 1; }
+.viz-ref { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .8; }
+.viz-reflabel { fill: var(--muted); font-size: 11px; font-family: var(--font); }
+.ins-cal { margin-bottom: 22px; padding: 22px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.ins-cal h2 { font-family: var(--font-display); font-weight: 600; font-size: 22px; margin-bottom: 4px; }
+.ins-cal > p { color: var(--muted); font-size: 14px; max-width: 760px; }
 .viz-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
 .viz-table-wrap { overflow-x: auto; }
 .viz-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }

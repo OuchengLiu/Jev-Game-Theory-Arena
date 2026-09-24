@@ -36,6 +36,19 @@ export function h(sel, attrs, ...children) {
 /** replaceChildren that skips null/false (the native one prints "null"). */
 export const fill = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter((k) => k != null && k !== false));
 
+// Jev's odds can be hidden (blurred) so they don't spoil the next move; default hidden.
+const ODDS_KEY = 'jev-gtl-odds';
+export const oddsHidden = () => { try { return localStorage.getItem(ODDS_KEY) !== 'shown'; } catch { return true; } };
+export function applyOddsVisibility() { document.documentElement.classList.toggle('odds-hidden', oddsHidden()); }
+function toggleOdds() {
+  try { localStorage.setItem(ODDS_KEY, oddsHidden() ? 'shown' : 'hidden'); } catch { /* ignore */ }
+  applyOddsVisibility();
+  document.querySelectorAll('.eye-btn').forEach((b) => { b.innerHTML = eyeSvg(); b.title = t(oddsHidden() ? 'think.show' : 'think.hide'); });
+}
+const eyeSvg = () => (oddsHidden()
+  ? '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c5.5 0 9 5.5 9.5 7a13 13 0 0 1-2.7 3.7M6.1 6.2C3.9 7.6 2.8 9.8 2.5 12c.5 1.5 4 7 9.5 7 1.7 0 3.2-.5 4.5-1.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>'
+  : '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z"/><circle cx="12" cy="12" r="3"/></svg>');
+
 export const pct = (p) => `${Math.round((p || 0) * 100)}%`;
 
 /**
@@ -52,14 +65,23 @@ export class ThinkPanel {
     this.waiting();
   }
 
-  header(result) {
+  header(result, caption) {
     const isLocal = result ? result.source === 'local' : effectiveMode() === 'practice';
     const mode = result?.mode || effectiveMode();
     return h('div.think-head',
       h('div.think-title', h('span.pulse', { class: isLocal ? 'local' : '' }), t(isLocal ? 'think.title.local' : 'think.title'),
-        !isLocal ? h('span.mode-chip', t(`mode.${mode}`)) : null),
-      result ? h('div.think-meta', result.model, ' · ', t('think.ms', { ms: result.ms })) : null,
+        !isLocal ? h('span.mode-chip', t(`mode.${mode}`), result?.policy ? ` · ${t(`policy.${result.policy}`)}` : '') : null),
+      h('div.think-tools',
+        // real round-trip time; the practice bot has no meaningful latency to show
+        result && !isLocal ? h('span.think-meta', result.model, ' · ', t('think.ms', { ms: result.ms })) : null,
+        h('button.eye-btn', { type: 'button', title: t(oddsHidden() ? 'think.show' : 'think.hide'), 'aria-label': t('think.show'), html: eyeSvg(), onclick: toggleOdds })),
+      caption ? h('div.think-caption', caption) : null,
     );
+  }
+
+  /** Wrap decision content so it can be blurred while odds are hidden. */
+  wrap(...kids) {
+    return h('div.think-body', h('div.think-cover', h('span', t('think.covered'))), ...kids);
   }
 
   /** Re-draw the last state (e.g. after a language switch). */
@@ -115,8 +137,8 @@ export class ThinkPanel {
   show(result, opts = {}) {
     this.last = ['show', [result, opts]];
     fill(this.el,
-      this.header(result),
-      this.body(result, opts),
+      this.header(result, t('think.last')),
+      this.wrap(this.body(result, opts)),
       result.error ? h('div.fallback', t(`think.fallback.${result.error}`)) : null,
     );
     this.animate();
@@ -161,9 +183,8 @@ export class ThinkPanel {
     this.last = ['showMany', [items]];
     if (items.length === 1) { this.show(...items[0]); return; }
     fill(this.el,
-      this.header(items[items.length - 1][0]),
-      h('div.think-q.review-head', t('think.review', { n: items.length })),
-      h('div.review', items.map(([res, opts], i) => h('div.review-step', h('span.step-no', i + 1), h('div', this.body(res, opts, { compact: true }))))),
+      this.header(items[items.length - 1][0], t('think.review', { n: items.length })),
+      this.wrap(h('div.review', items.map(([res, opts], i) => h('div.review-step', h('span.step-no', i + 1), h('div', this.body(res, opts, { compact: true })))))),
     );
     this.animate();
   }

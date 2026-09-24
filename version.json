@@ -1,22 +1,26 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "date": "2026-09-24",
   "notes": {
     "en": [
-      "New game: Colonel Blotto",
-      "Hold'em is now No-Limit: bet any amount or go all-in",
-      "Three opponent modes: Jev Hinted, Jev Raw, and Practice",
-      "Jev's odds in hidden-card games are now revealed after each hand",
-      "Fresh look for every game",
-      "New Insights page: see how people and Jev play (anonymous, and you can opt out)"
+      "Jev is live: play against the real model in every game",
+      "Each visit is randomly assigned an opponent mode (Jev Hinted or Raw) and a move choice (Top pick or By odds); you can switch either at any time",
+      "Top pick: Jev always plays the move it rates highest. By odds: its move is drawn in proportion to its probabilities",
+      "Fairer comparison between Hinted and Raw mode",
+      "Jev's odds are hidden by default; tap the eye to reveal them",
+      "New Insights page with real, anonymous statistics, including whether Jev’s probabilities are calibrated (you can opt out)",
+      "Updates now load automatically, no hard refresh needed",
+      "About page: a short Methods section explains exactly how Jev plays"
     ],
     "zh": [
-      "新游戏：布洛托上校",
-      "德州改为无限注：可以自由下注、全下",
-      "三种对手模式：Jev 提示模式、Jev 直觉模式、练习模式",
-      "有底牌的游戏里，Jev 的概率改为每手结束后公开",
-      "所有游戏的全新界面",
-      "新增数据洞察页：看看人类和 Jev 的打法差异（匿名，可选择不参与）"
+      "Jev 正式上线：每个游戏都能和真实的模型对战",
+      "每次访问随机分配对手模式（Jev 提示 / 直觉）和出招方式（取最高 / 按概率），都可以随时切换",
+      "取最高：Jev 总是出概率最高的那一招；按概率：按它给出的概率按比例抽取出招",
+      "提示模式与直觉模式的对比更公平",
+      "Jev 的概率默认隐藏，点小眼睛即可查看",
+      "新增数据洞察页：真实的匿名统计，包括 Jev 的概率准不准（可选择不参与）",
+      "更新会自动加载，不再需要强制刷新",
+      "关于页新增“方法”部分，说明 Jev 具体是怎么出招的"
     ]
   }
 }
