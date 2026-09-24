@@ -1,0 +1,190 @@
+/* Liar's Dice — game-specific styles (all classes prefixed ld-). */
+
+.ld-table {
+  display: grid;
+  gap: 14px;
+  margin: 16px 0;
+}
+
+.ld-cup {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.ld-cup-jev { border-top: 3px solid var(--accent); }
+.ld-cup-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+}
+.ld-who { font-weight: 600; }
+.ld-count { color: var(--muted); }
+.ld-minus { color: var(--bad); animation: ld-pop 0.4s ease-out; }
+
+.ld-dice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: 46px;
+  align-items: center;
+}
+
+/* ---- pip die ---- */
+.ld-die {
+  --size: 44px;
+  width: var(--size);
+  height: var(--size);
+  display: inline-grid;
+  grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+  padding: calc(var(--size) * 0.14);
+  gap: calc(var(--size) * 0.04);
+  box-sizing: border-box;
+  border-radius: calc(var(--size) * 0.22);
+  background: linear-gradient(145deg, #ffffff, #eceae6);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.08);
+  flex: none;
+  vertical-align: middle;
+  transition: opacity 0.3s, transform 0.3s, box-shadow 0.3s;
+}
+.ld-die i {
+  display: block;
+  border-radius: 50%;
+  place-self: center;
+  width: 78%;
+  height: 78%;
+}
+.ld-die i.p { background: #1f2430; box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.4); }
+.ld-die.ld-one i.p { background: #dc2626; }
+
+.ld-die.ld-small { --size: 30px; }
+.ld-die.ld-tiny { --size: 18px; border-radius: 4px; box-shadow: none; }
+.ld-die.ld-big { --size: 52px; }
+
+/* hidden die under Jev's cup */
+.ld-die.ld-back {
+  background:
+    repeating-linear-gradient(45deg, transparent 0 6px, rgba(255, 255, 255, 0.12) 6px 12px),
+    linear-gradient(145deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #000));
+  border-color: transparent;
+  animation: ld-rise 0.35s ease-out both;
+}
+
+/* reveal states */
+.ld-die.ld-match { box-shadow: 0 0 0 3px var(--accent), 0 4px 12px rgba(0, 0, 0, 0.15); transform: translateY(-3px); }
+.ld-die.ld-wild { box-shadow: 0 0 0 3px #dc2626, 0 4px 12px rgba(0, 0, 0, 0.15); transform: translateY(-3px); }
+.ld-die.ld-dim { opacity: 0.35; }
+.ld-die.ld-flip { animation: ld-flip 0.5s ease-out backwards; }
+.ld-die.ld-lost { animation: ld-lose 0.8s ease-in forwards; }
+
+/* ---- centre: current bid + history ---- */
+.ld-center {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  text-align: center;
+}
+.ld-bid {
+  display: inline-grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 10px 22px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  animation: ld-pop 0.3s ease-out;
+}
+.ld-bid small { color: var(--muted); font-size: 0.78rem; }
+.ld-bid-jev { border-color: var(--accent); }
+.ld-bid-empty { box-shadow: none; border-style: dashed; padding: 14px 22px; }
+.ld-bid-main { display: flex; align-items: center; gap: 10px; }
+.ld-qty { font-size: 2.2rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.ld-x { color: var(--muted); font-size: 1.4rem; }
+
+.ld-history { display: grid; gap: 6px; justify-items: center; }
+.ld-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.ld-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.ld-chip-who { font-weight: 600; }
+.ld-chip-jev .ld-chip-who { color: var(--accent); }
+.ld-chip .ld-die { margin-left: 3px; }
+
+/* ---- bid picker ---- */
+.ld-actions { text-align: center; }
+.ld-picker {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px 26px;
+  margin: 8px 0 4px;
+  transition: opacity 0.2s;
+}
+.ld-picker.ld-disabled { opacity: 0.5; }
+.ld-field { display: grid; gap: 6px; justify-items: center; }
+.ld-stepper { display: flex; align-items: center; gap: 8px; }
+.ld-step { width: 40px; height: 40px; padding: 0; font-size: 1.2rem; }
+.ld-stepval { min-width: 2ch; font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.ld-faces { display: flex; gap: 6px; }
+.ld-face {
+  padding: 4px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  line-height: 0;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.ld-face:hover:not(:disabled) { transform: translateY(-2px); }
+.ld-face.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.ld-face:disabled { opacity: 0.3; cursor: not-allowed; }
+.ld-face:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ld-hint { font-size: 0.85rem; min-height: 1.3em; margin: 4px 0 10px; }
+.ld-bidbtn { background: var(--accent); border-color: var(--accent); color: #1a1204; }
+
+/* ---- verdict ---- */
+.ld-verdict { text-align: center; display: grid; gap: 6px; justify-items: center; margin-top: 4px; }
+.ld-verdict p { margin: 0; }
+.ld-call { font-weight: 600; }
+.ld-outcome { font-weight: 700; font-size: 1.1rem; animation: ld-pop 0.35s ease-out; }
+.ld-outcome.ld-good { color: var(--good); }
+.ld-outcome.ld-bad { color: var(--bad); }
+.ld-pulse { animation: ld-blink 1s ease-in-out infinite; }
+.ld-verdict .btn-row { margin-top: 8px; }
+
+/* dark theme: slightly softer dice */
+[data-theme='dark'] .ld-die:not(.ld-back) {
+  background: linear-gradient(145deg, #f4f1ea, #d9d4ca);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+@keyframes ld-rise { from { opacity: 0; transform: translateY(6px) scale(0.9); } to { opacity: 1; transform: none; } }
+@keyframes ld-flip { from { opacity: 0; transform: rotateY(90deg) scale(0.85); } to { opacity: 1; transform: none; } }
+@keyframes ld-pop { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: none; } }
+@keyframes ld-blink { 50% { opacity: 0.4; } }
+@keyframes ld-lose { to { opacity: 0.12; transform: translateY(8px) scale(0.8) rotate(-12deg); filter: grayscale(1); } }
+
+@media (max-width: 480px) {
+  .ld-die { --size: 36px; }
+  .ld-die.ld-small { --size: 26px; }
+  .ld-die.ld-big { --size: 44px; }
+  .ld-dice { gap: 7px; }
+  .ld-faces { gap: 3px; }
+  .ld-cup { padding: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ld-die, .ld-bid, .ld-outcome, .ld-minus, .ld-pulse { animation: none !important; transition: none !important; }
+}

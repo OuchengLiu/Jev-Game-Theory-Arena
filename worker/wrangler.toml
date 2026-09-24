@@ -1,0 +1,28 @@
+name = "jev-game-theory-proxy"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+# Comma-separated list of origins allowed to call the proxy (no trailing slash).
+ALLOWED_ORIGINS = "https://your-name.github.io,http://localhost:8000"
+# Global cap on Jev calls per UTC day (requires the USAGE KV namespace below).
+DAILY_LIMIT = "20000"
+
+# Secrets (never commit these) — set with:
+#   npx wrangler secret put TYPESAFE_API_KEY
+#   npx wrangler secret put TURNSTILE_SECRET   (optional, enables the human check)
+#   npx wrangler secret put SESSION_SECRET     (required if TURNSTILE_SECRET is set; any long random string)
+
+# Per-IP rate limit: 40 decisions per minute.
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+  [ratelimits.simple]
+  limit = 40
+  period = 60
+
+# Optional: daily global budget. Create with `npx wrangler kv namespace create USAGE`
+# and paste the id here.
+# [[kv_namespaces]]
+# binding = "USAGE"
+# id = "<your-kv-namespace-id>"
