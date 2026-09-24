@@ -14,10 +14,21 @@ const defaults = {
   lang: browserLang(),
   theme: 'auto',            // auto | light | dark
   jevMode: 'hinted',        // hinted: code computes odds for Jev | raw: Jev sees only the raw record | practice: no Jev
+  share: true,              // anonymous gameplay statistics (opt-out)
+  research: false,          // also allow use in research publications (opt-in)
+  noticeSeen: false,        // data notice acknowledged
 };
 
 let state = { ...defaults, ...safeParse(storageGet(KEY)) };
-if (!MODES.includes(state.jevMode)) state.jevMode = 'hinted';
+// The opponent mode is per visit: each time the site is opened, Hinted or Raw is assigned at
+// random (50/50) so both get played equally; a player's own switch lasts for that visit (tab).
+const SESSION_MODE = 'jev-gtl-mode';
+state.jevMode = (() => {
+  try { const m = sessionStorage.getItem(SESSION_MODE); if (MODES.includes(m)) return m; } catch { /* ignore */ }
+  const m = Math.random() < 0.5 ? 'hinted' : 'raw';
+  try { sessionStorage.setItem(SESSION_MODE, m); } catch { /* ignore */ }
+  return m;
+})();
 if (!['zh', 'en'].includes(state.lang)) state.lang = defaults.lang;
 
 function storageGet(k) {
@@ -33,7 +44,11 @@ export const settings = {
   set(k, v) {
     if (state[k] === v) return;
     state = { ...state, [k]: v };
-    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* storage blocked: settings last for this visit only */ }
+    try {
+      if (k === 'jevMode') sessionStorage.setItem(SESSION_MODE, v);
+      const { jevMode, ...persist } = state; // the mode is per visit, not remembered across visits
+      localStorage.setItem(KEY, JSON.stringify(persist));
+    } catch { /* storage blocked: settings last for this visit only */ }
     listeners.forEach((fn) => fn(k, v));
   },
   onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },

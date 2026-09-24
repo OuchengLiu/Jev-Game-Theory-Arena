@@ -4,7 +4,9 @@ compatibility_date = "2026-09-01"
 
 [vars]
 # Comma-separated list of origins allowed to call the proxy (no trailing slash).
-ALLOWED_ORIGINS = "https://ouchengliu.github.io,http://localhost:8000"
+ALLOWED_ORIGINS = "https://ouchengliu.github.io"
+# For local testing only: temporarily append ",http://localhost:8000" and redeploy, then remove it again.
+# Otherwise anyone running a clone on localhost:8000 would use this Worker.
 # Jev moves allowed per UTC day, site-wide and per visitor.
 DAILY_LIMIT = "20000"
 IP_DAILY_LIMIT = "600"
@@ -21,20 +23,38 @@ binding = "AI"
 #   npx wrangler secret put TURNSTILE_SECRET   (optional, enables the human check)
 #   npx wrangler secret put SESSION_SECRET     (required if TURNSTILE_SECRET is set; any long random string)
 
-# Short bursts per visitor: 8 moves / 10 s and 30 moves / minute.
+# Short bursts per visitor: 15 moves / 10 s and 60 moves / minute (fast games like RPS need headroom).
 [[ratelimits]]
 name = "BURST_LIMITER"
 namespace_id = "1001"
   [ratelimits.simple]
-  limit = 8
+  limit = 15
   period = 10
 
 [[ratelimits]]
 name = "RATE_LIMITER"
 namespace_id = "1002"
   [ratelimits.simple]
-  limit = 30
+  limit = 60
   period = 60
+
+# Anonymous gameplay events: 20 batches / minute per visitor.
+[[ratelimits]]
+name = "LOG_LIMITER"
+namespace_id = "1003"
+  [ratelimits.simple]
+  limit = 20
+  period = 60
+
+# Anonymous gameplay data for the insights page (Cloudflare D1). Optional — without it the
+# Worker simply doesn't store anything. Set up with:
+#   npx wrangler d1 create jev-lab-data                     (then paste the database_id below)
+#   npx wrangler d1 migrations apply jev-lab-data --remote  (creates the tables)
+[[d1_databases]]
+binding = "DB"
+database_name = "jev-lab-data"
+database_id = "565f1e4e-a6da-4dcf-a20c-442eb0357c36"
+migrations_dir = "migrations"
 
 # Exact daily counters + block list (Durable Object, SQLite storage — available on the free plan).
 [[durable_objects.bindings]]

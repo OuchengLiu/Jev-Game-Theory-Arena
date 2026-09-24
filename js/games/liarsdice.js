@@ -57,7 +57,7 @@ function cupSvg(id, open) {
 
 export default {
   id: 'liarsdice',
-  meta: { icon: '🎲', accent: '#c9a45c', minutes: 6 },
+  meta: { icon: '🎲', accent: '#c9a45c', minutes: 6, version: '1.1' },
   strings: {
     en: {
       title: 'Liar’s Dice',
@@ -175,6 +175,13 @@ export default {
     // Jev modes: Jev's odds are sealed during a round and reviewed once the dice are revealed;
     // the review stays up until Jev's first decision of the next round.
     let reviewing = false;
+    // anonymous telemetry: never allowed to break the game
+    const track = (fn, ...a) => { try { ctx.track?.[fn]?.(...a); } catch { /* ignore */ } };
+    // How plausible a bid was from the bidder's own dice (the other cup unknown, 1s wild).
+    const plaus = (who, bid) => {
+      const p = bidProb(dice[who], dice[who === 'you' ? 'jev' : 'you'].length, bid);
+      return p >= 0.6 ? 'likely' : p >= 0.35 ? 'even' : 'unlikely';
+    };
 
     function defaultPick() {
       const cur = current();
@@ -197,6 +204,7 @@ export default {
     }
 
     function newGame() {
+      track('start');
       gen++;
       timers.forEach(clearTimeout);
       timers.clear();
@@ -267,9 +275,10 @@ export default {
         extras: () => (cur ? [{ label: L('thinksBluff'), value: res.answers?.opp_bluffing?.noul }] : []),
       });
       if (opt.type === 'challenge') {
-        await callLiar('jev');
+        await callLiar('jev', res);
         return;
       }
+      track('opp', res, { ph: bids.length ? 'raise' : 'open', act: 'bid', x: plaus('jev', opt) });
       bids.push({ by: 'jev', qty: opt.qty, face: opt.face });
       bidAt = now();
       turn = 'you';
@@ -281,6 +290,7 @@ export default {
     function humanBid() {
       if (busy || phase !== 'bidding' || turn !== 'you' || !pick) return;
       if (!isLegalBid(pick, current(), total())) return;
+      track('human', { ph: bids.length ? 'raise' : 'open', act: 'bid', x: plaus('you', pick) });
       bids.push({ by: 'you', qty: pick.qty, face: pick.face });
       bidAt = now();
       jevTurn();
@@ -291,13 +301,16 @@ export default {
       callLiar('you');
     }
 
-    async function callLiar(challenger) {
+    async function callLiar(challenger, res) {
       const g = gen;
       busy = true;
       const bid = current();
       const all = [...dice.you, ...dice.jev];
       const { count, bidTrue } = resolveChallenge(all, bid);
       const loser = bidTrue ? challenger : bid.by;
+      const call = { ph: 'raise', act: 'liar', x: bidTrue ? 'wrong' : 'right' };
+      if (challenger === 'jev') track('opp', res, call); else track('human', call);
+      if (dice[loser].length - 1 <= 0) track('end', loser === 'jev' ? 'win' : 'lose');
       stats = recordBids(stats, bids, 'you', all);
       log.push({ bid: { ...bid }, caller: challenger, actual: count, loser, youDice: [...dice.you] });
       reveal = { bid, challenger, count, bidTrue, loser, shown: false, lostIdx: -1, calledAt: now(), at: 0 };

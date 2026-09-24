@@ -9,7 +9,7 @@ import { choiceAnswer, noulAnswer } from '../engine.js';
 import {
   START_STACK, STREETS, newHand, legalActions, amountFor, applyAction, toCall, potSize, raiseRange, jevOptions,
   potFractionTo, clampTo, recordStats, emptyStats, makePayload, makeRawPayload, summarizeHand, bestFive, botPolicy,
-  rankOf, suitOf,
+  rankOf, suitOf, equity,
 } from './holdem-core.js';
 
 const HUMAN = 0, JEV = 1;
@@ -119,7 +119,7 @@ const HAND_NAMES = {
 
 export default {
   id: 'holdem',
-  meta: { icon: '♠︎', accent: '#6366f1', minutes: 8 },
+  meta: { icon: '♠︎', accent: '#6366f1', minutes: 8, version: '2.0' },
   strings: {
     en: {
       title: 'Heads-up No-Limit Hold’em',
@@ -217,6 +217,22 @@ export default {
     let reviewing = false;
     const endOfHand = () => { if (panel.sealed?.length) { panel.unseal(); reviewing = true; } };
     const revealing = () => hand.done && performance.now() < revealAt;
+    // anonymous telemetry: never allowed to break the game
+    const track = (fn, ...a) => { try { ctx.track?.[fn]?.(...a); } catch { /* ignore */ } };
+    // One action (call before applyAction): street, action ('allin' when it puts the whole
+    // remaining stack in) and the actor's hand-strength bucket from equity vs a random hand.
+    function trackMove(p, a, to, res) {
+      try {
+        const amt = a === 'fold' || a === 'check' ? 0 : amountFor(hand, a, to);
+        const e = equity(hand.holes[p], hand.board, 400);
+        const ev = {
+          ph: STREETS[hand.street],
+          act: amt > 0 && amt >= hand.stacks[p] ? 'allin' : a,
+          x: e < 0.4 ? 'weak' : e < 0.6 ? 'medium' : 'strong',
+        };
+        if (p === HUMAN) track('human', ev); else track('opp', res, ev);
+      } catch { /* ignore */ }
+    }
 
     const wait = (ms) => new Promise((resolve) => {
       const id = setTimeout(() => { timers.delete(id); resolve(); }, ms);
@@ -241,6 +257,7 @@ export default {
     const settled = (key, dur) => reduced || (born.has(key) && performance.now() - born.get(key) > dur);
 
     function reset() {
+      track('start');
       gen++;
       stacks = [START_STACK, START_STACK];
       button = HUMAN;
@@ -278,6 +295,7 @@ export default {
           hand.recorded = true;
           stacks = [...hand.stacks];
           over = stacks[HUMAN] === 0 || stacks[JEV] === 0;
+          if (over) track('end', stacks[HUMAN] > 0 ? 'win' : 'lose');
           past.push(summarizeHand(hand, handNo));
           if (past.length > RECENT) past.shift();
           results.push({ n: handNo, winner: hand.result.winner, pot: hand.result.pot, showdown: hand.result.showdown });
@@ -314,6 +332,7 @@ export default {
         if (!r || !Number.isInteger(to) || to < r.min || to > r.max) return;
       }
       recordStats(stats, hand, a);
+      trackMove(HUMAN, a, to);
       applyAction(hand, a, to);
       step();
     }
@@ -365,6 +384,7 @@ export default {
         ],
       });
       recordStats(stats, cur, o.act);
+      trackMove(JEV, o.act, o.to, res);
       applyAction(cur, o.act, o.to);
       step();
     }

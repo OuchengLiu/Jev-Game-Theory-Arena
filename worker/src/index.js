@@ -9,6 +9,7 @@
 //      site-wide, and blocks visitors who keep sending invalid requests (Guard Durable Object)
 //   5. optionally requires a Cloudflare Turnstile check, exchanged for a short-lived signed session
 //   6. returns only { model, answers }
+//   7. POST /log stores anonymous gameplay events in D1; GET /stats serves cached aggregates
 //
 // Jev is reached through the Workers AI binding (model typesafe/jev, billed to the Cloudflare
 // account) or, if the TYPESAFE_API_KEY secret is set, through TypeSafe's own API.
@@ -18,6 +19,7 @@
 //   bad_request · session_required · forbidden
 
 import { buildJevRequest, SchemaError } from '../../shared/prompts.js';
+import { logEvents, getStats } from './data.js';
 export { Guard } from './guard.js';
 
 const TYPESAFE_URL = 'https://api.typesafe.ai/v1/systemone';
@@ -32,7 +34,7 @@ export default {
     const originOk = allowed.includes(origin);
     const cors = originOk ? {
       'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, X-Session',
       'Access-Control-Expose-Headers': 'Retry-After',
       'Access-Control-Max-Age': '86400',
@@ -50,10 +52,12 @@ export default {
 
     if (request.method === 'OPTIONS') return new Response(null, { status: originOk ? 204 : 403, headers: cors });
     if (!originOk) return json(403, { error: 'forbidden' });
-    if (request.method !== 'POST') return json(405, { error: 'forbidden' });
 
     const url = new URL(request.url);
-    if (url.pathname !== '/decide' && url.pathname !== '/session') return json(404, { error: 'forbidden' });
+    // public, cached aggregate statistics for the insights page
+    if (request.method === 'GET' && url.pathname === '/stats') return getStats(env, ctx, cors);
+    if (request.method !== 'POST') return json(405, { error: 'forbidden' });
+    if (!['/decide', '/session', '/log'].includes(url.pathname)) return json(404, { error: 'forbidden' });
 
     const ip = await hashIp(request.headers.get('CF-Connecting-IP') || 'unknown');
     const guard = env.GUARD ? env.GUARD.get(env.GUARD.idFromName('global')) : null;
@@ -63,6 +67,9 @@ export default {
       return r.json();
     };
     const refuse = (verdict) => json(verdict.reason === 'blocked' ? 403 : 429, { error: verdict.reason, retryAfter: verdict.retryAfter });
+
+    // anonymous gameplay events (separate, generous limit; never touches the Jev quota)
+    if (url.pathname === '/log') return logEvents(request, env, { ip, askGuard, json, refuse });
 
     // ---- short bursts: 10-second and 1-minute windows per visitor ----
     for (const [limiter, period] of [[env.BURST_LIMITER, 10], [env.RATE_LIMITER, 60]]) {
@@ -116,15 +123,20 @@ export default {
     // ---- call Jev: Cloudflare Workers AI (typesafe/jev) or TypeSafe's own API ----
     if (provider === 'workers-ai') {
       try {
-        const out = unwrapAi(await env.AI.run(WORKERS_AI_MODEL, { state: jevRequest.state, questions: jevRequest.questions }));
-        if (!out?.answers) throw new Error('empty response');
+        const run = env.AI.run(WORKERS_AI_MODEL, { state: jevRequest.state, questions: jevRequest.questions });
+        const raw = await Promise.race([run, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout after 8s')), 8000))]);
+        const out = unwrapAi(raw);
+        if (!out?.answers) throw new Error(`unexpected response: ${JSON.stringify(raw)?.slice(0, 120)}`);
         return json(200, { model: out.model || WORKERS_AI_MODEL, answers: out.answers });
       } catch (e) {
         const msg = String(e?.message || e);
         console.log('workers-ai failure', msg);
         // capacity / rate errors → busy; everything else → unavailable
-        if (/capacity|rate|limit|429|3040|neuron/i.test(msg)) return json(503, { error: 'upstream_busy', retryAfter: 60 });
-        return json(502, { error: 'unavailable', retryAfter: 30 });
+        // `detail` is a short provider message (never contains secrets) to make setup problems diagnosable
+        const detail = msg.replace(/[^\x20-\x7e]/g, '').slice(0, 160);
+        if (/credit|billing|payment|2021/i.test(msg)) return json(503, { error: 'not_configured', retryAfter: 600, detail });
+        if (/capacity|rate|limit|429|3040|neuron/i.test(msg)) return json(503, { error: 'upstream_busy', retryAfter: 60, detail });
+        return json(502, { error: 'unavailable', retryAfter: 30, detail });
       }
     }
     try {

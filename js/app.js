@@ -5,6 +5,8 @@ import { decide, pickAction, choiceAnswer, noulAnswer, normalize, getJevStatus, 
 import { gameIcon, icons } from './icons.js';
 import { CONFIG } from './config.js';
 import { initUpdates } from './updates.js';
+import { createTracker, sharingEnabled } from './telemetry.js';
+import { insightsPage } from './insights.js';
 
 import pd from './games/pd.js';
 import rps from './games/rps.js';
@@ -14,6 +16,8 @@ import liarsdice from './games/liarsdice.js';
 import blotto from './games/blotto.js';
 
 const GAMES = [holdem, liarsdice, blotto, pd, rps, ultimatum];
+// Home page order is shuffled once per visit so no game is always first.
+const HOME_ORDER = (() => { const a = [...GAMES]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; })();
 GAMES.forEach((g) => registerStrings(g.id, g.strings));
 
 const app = document.getElementById('app');
@@ -46,6 +50,7 @@ function header() {
     ),
     h('nav.nav',
       h('a.nav-link', { href: '#/' }, t('nav.games')),
+      h('a.nav-link', { href: '#/insights' }, t('nav.insights')),
       h('a.nav-link', { href: '#/about' }, t('nav.about')),
       h('a.icon-btn', { href: CONFIG.repoUrl, target: '_blank', rel: 'noopener', title: 'GitHub', html: icons.github }),
       h('button.icon-btn', {
@@ -62,7 +67,7 @@ function footer() {
   return h('footer.foot',
     h('div.disclaimer', svgEl(icons.shield), h('p', t('disclaimer'))),
     h('div.foot-row',
-      h('span', '© 2026 ', t('brand'), ' · ', h('a', { href: CONFIG.repoUrl, target: '_blank', rel: 'noopener' }, t('footer.oss'))),
+      h('span', '© 2026 ', t('brand'), ' · ', h('a', { href: CONFIG.repoUrl, target: '_blank', rel: 'noopener' }, t('footer.oss')), ' · ', h('a', { href: '#/insights' }, t('nav.insights'))),
       h('span.muted', t('footer.unofficial')),
     ),
   );
@@ -119,7 +124,7 @@ function homePage() {
     h('section.hero',
       h('div.hero-text',
         h('div.kicker', h('span.kicker-dot'), t('hero.kicker')),
-        h('h1.display', t('hero.title.a'), h('br'), h('em', t('hero.title.b'))),
+        h('h1.display.hero-title', h('span.line', t('hero.title.a')), h('br'), h('em.line', t('hero.title.b'))),
         h('p.lead', t('hero.body')),
         h('div.hero-cta',
           h('a.btn.lg', { href: '#games', onclick: (e) => { e.preventDefault(); document.getElementById('games').scrollIntoView({ behavior: 'smooth' }); } }, t('hero.cta'), svgEl(icons.arrow)),
@@ -130,7 +135,7 @@ function homePage() {
     ),
     h('section#games.section',
       h('div.section-head', h('h2.display-sm', t('games.title')), h('p.muted', t('games.sub'))),
-      h('div.grid', GAMES.map(gameCard)),
+      h('div.grid', HOME_ORDER.map(gameCard)),
     ),
     footer(),
   );
@@ -194,8 +199,9 @@ function modeControl() {
   document.addEventListener('click', close);
   wrap.cleanup = () => document.removeEventListener('click', close);
   const off = jev ? '' : t('mode.jev.off');
+  wrap.classList.add('mode-control');
   wrap.append(
-    h('span.control-label', t('jevmode.label'), info),
+    h('span.control-label', t('jevmode.label'), info, jev ? h('span.mode-hint', t('mode.hint')) : null),
     segmented([
       { value: 'hinted', label: t('mode.hinted'), disabled: !jev, title: off },
       { value: 'raw', label: t('mode.raw'), disabled: !jev, title: off },
@@ -204,6 +210,18 @@ function modeControl() {
     pop,
   );
   return wrap;
+}
+
+// One-time note about anonymous gameplay statistics (only when they would actually be sent).
+function dataNotice() {
+  if (settings.get('noticeSeen') || !sharingEnabled()) return null;
+  return h('div.data-note', { role: 'note' },
+    svgEl(icons.shield),
+    h('p', t('notice.text'), ' ', h('a.link', { href: '#/insights' }, t('notice.more'))),
+    h('div.data-note-actions',
+      h('button.btn.ghost.sm', { type: 'button', onclick: () => { settings.set('share', false); settings.set('noticeSeen', true); } }, t('notice.optout')),
+      h('button.btn.sm', { type: 'button', onclick: () => settings.set('noticeSeen', true) }, t('notice.ok'))),
+  );
 }
 
 // Notice shown while Jev is limited (quota, too fast, blocked, outage), with a live countdown.
@@ -268,15 +286,18 @@ function gamePage(game) {
     ),
     h('div.game-sub',
       rulesToggle(game),
+      h('span.badge.vs-badge', { class: `vs-${effectiveMode()}` }, h('span.vs-dot'), t('vs.now', { mode: effectiveMode() === 'practice' ? t('mode.practice') : `Jev · ${t(`mode.${effectiveMode()}`)}` })),
       h('span.badge', svgEl(icons.shield), t('disclaimer.short')),
       !jevAvailable() ? h('span.badge.offline', h('span.dot-off'), t('status.offline')) : null,
     ),
     banner,
+    dataNotice(),
     h('div.game-layout', board, panel.el),
     footer(),
   );
   page.cleanup = () => { mode.cleanup(); banner.cleanup(); };
-  const ctx = { t, h, panel, decide, pickAction, choiceAnswer, noulAnswer, normalize, toast, settings };
+  const track = createTracker(game.id, game.meta.version || '1.0');
+  const ctx = { t, h, panel, decide, pickAction, choiceAnswer, noulAnswer, normalize, toast, settings, track };
   const instance = game.mount(board, ctx);
   return { page, instance, panel };
 }
@@ -303,6 +324,7 @@ function route() {
     current = { game, ...built };
     page = built.page;
   } else if (hash.startsWith('#/about')) page = aboutPage();
+  else if (hash.startsWith('#/insights')) page = insightsPage(footer);
   else page = homePage();
   app.replaceChildren(header(), page);
 }

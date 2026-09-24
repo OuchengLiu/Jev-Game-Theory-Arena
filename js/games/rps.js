@@ -89,7 +89,7 @@ const P = (pt) => `${pt[0].toFixed(1)},${pt[1].toFixed(1)}`;
 
 export default {
   id: 'rps',
-  meta: { icon: 'hand', accent: '#ec4899', minutes: 2 },
+  meta: { icon: 'hand', accent: '#ec4899', minutes: 2, version: '1.1' },
   strings: {
     en: {
       title: 'Rock · Paper · Scissors',
@@ -166,8 +166,11 @@ export default {
     let alive = true;
     let history, preds, wins, busy, last, hits, fresh, prevPoint;
     let afterRender = [];
+    // anonymous telemetry: never allowed to break the game
+    const track = (fn, ...a) => { try { ctx.track?.[fn]?.(...a); } catch { /* ignore */ } };
 
     function reset() {
+      track('start');
       history = []; // { human, jev, outcome } — exactly what the schema allows
       preds = []; // Jev's (normalised) prediction for each round, for the simplex plot
       wins = { human: 0, jev: 0, draw: 0 };
@@ -204,6 +207,10 @@ export default {
       wins[outcome === 'human_won' ? 'human' : outcome === 'jev_won' ? 'jev' : 'draw'] += 1;
       if (guess === human) hits += 1;
       last = { human, jev, outcome, guess };
+      const ph = `r${history.length}`;
+      track('human', { ph, act: human });
+      track('opp', res, { ph, act: jev, x: top === human ? 'hit' : 'miss' });
+      if (history.length >= TOTAL) track('end', wins.human > wins.jev ? 'win' : wins.human < wins.jev ? 'lose' : 'draw');
       const shown = { ...res, answers: { ...res.answers, predict: { ...(res.answers?.predict || {}), probabilities: pred } } };
       panel.show(shown, {
         question: 'predict',

@@ -94,7 +94,7 @@ const sum = (a) => a.reduce((x, y) => x + y, 0);
 
 export default {
   id: 'blotto',
-  meta: { icon: '⚔️', accent: '#e11d48', minutes: 4 },
+  meta: { icon: '⚔️', accent: '#e11d48', minutes: 4, version: '1.1' },
   strings: {
     en: {
       title: 'Colonel Blotto',
@@ -204,9 +204,13 @@ export default {
     let alloc, history, score, phase, reveal, fresh, balancedTurn;
 
     const placed = () => sum(alloc);
+    // anonymous telemetry: never allowed to break the game
+    const track = (fn, ...a) => { try { ctx.track?.[fn]?.(...a); } catch { /* ignore */ } };
+    const shape = (a) => [...a].sort((x, y) => y - x).join('-');
     const fieldName = (i) => L(FIELD_KEYS[i]);
 
     function newGame() {
+      track('start');
       gen++;
       timers.forEach(clearTimeout);
       timers.clear();
@@ -310,6 +314,9 @@ export default {
 
       const { fields, result } = resolve(you, jev);
       reveal = { you, jev, fields, result, step: 0, round: history.length + 1 };
+      const ph = `r${reveal.round}`;
+      track('human', { ph, act: shape(you), x: result > 0 ? 'win' : result < 0 ? 'lose' : 'draw' });
+      track('opp', res, { ph, act: shape(jev), x: result < 0 ? 'win' : result > 0 ? 'lose' : 'draw' });
       phase = 'reveal';
       render();
       const quick = reducedMotion();
@@ -326,6 +333,7 @@ export default {
       history.push({ jev, opp: you });
       if (result > 0) score.you++; else if (result < 0) score.jev++; else score.draw++;
       phase = history.length >= ROUNDS ? 'over' : 'done';
+      if (phase === 'over') track('end', score.you > score.jev ? 'win' : score.you < score.jev ? 'lose' : 'draw');
       render();
     }
 

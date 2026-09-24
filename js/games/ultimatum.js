@@ -67,7 +67,7 @@ const ICON = {
 
 export default {
   id: 'ultimatum',
-  meta: { icon: 'scale', accent: '#0ea5e9', minutes: 3 },
+  meta: { icon: 'scale', accent: '#0ea5e9', minutes: 3, version: '1.1' },
   strings: {
     en: {
       title: 'Ultimatum Game',
@@ -154,8 +154,12 @@ export default {
     let alive = true;
     let round, history, score, phase, draft, jevOffer, last, fresh;
     // phase: 'propose' (you pick an offer) | 'thinking' | 'respond' (you answer Jev) | 'reveal' | 'done'
+    // anonymous telemetry: never allowed to break the game
+    const track = (fn, ...a) => { try { ctx.track?.[fn]?.(...a); } catch { /* ignore */ } };
+    const trackEnd = () => { if (phase === 'done') track('end', score.human > score.jev ? 'win' : score.human < score.jev ? 'lose' : 'draw'); };
 
     function reset() {
+      track('start');
       round = 1;
       history = []; // { proposer: 'human'|'jev', offer, accepted } — exactly what the schema allows
       score = { human: 0, jev: 0 };
@@ -188,11 +192,14 @@ export default {
       jevOffer = null;
       update();
       panel.thinking();
+      track('human', { ph: `r${round}`, act: `o${offer}` });
       const payload = { role: 'respond', offer, ...payloadBase() };
       const res = await ctx.decide('ultimatum', () => payload, localBot);
       if (!alive) return;
       const act = ctx.pickAction(res.answers?.respond, ['accept', 'reject']);
+      track('opp', res, { ph: `r${round}`, act, x: String(offer) });
       record('human', offer, act === 'accept');
+      trackEnd();
       panel.show(res, {
         question: 'respond',
         labels: () => ({ accept: t('ultimatum.accept'), reject: t('ultimatum.reject') }),
@@ -212,6 +219,7 @@ export default {
       if (!alive) return;
       const pick = ctx.pickAction(res.answers?.offer, OFFERS);
       jevOffer = Number(pick);
+      track('opp', res, { ph: `r${round}`, act: `o${jevOffer}` });
       phase = 'respond';
       // Jev modes: its odds stay sealed until you've answered (they'd hint how low it can go).
       panel.reveal(res, {
@@ -226,7 +234,9 @@ export default {
 
     function respond(accepted) {
       if (phase !== 'respond' || !alive) return;
+      track('human', { ph: `r${round}`, act: accepted ? 'accept' : 'reject', x: String(jevOffer) });
       record('jev', jevOffer, accepted);
+      trackEnd();
       panel.unseal();
       update();
     }

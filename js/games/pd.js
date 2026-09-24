@@ -51,7 +51,7 @@ const mark = (m, x, y, r, cls = '') => (m === 'C'
 
 export default {
   id: 'pd',
-  meta: { icon: 'handshake', accent: '#10b981', minutes: 3 },
+  meta: { icon: 'handshake', accent: '#10b981', minutes: 3, version: '1.1' },
   strings: {
     en: {
       title: "Prisoner's Dilemma",
@@ -123,8 +123,11 @@ export default {
     const { t, h, panel } = ctx;
     let alive = true;
     let history, score, busy, pending, fresh;
+    // anonymous telemetry: never allowed to break the game
+    const track = (fn, ...a) => { try { ctx.track?.[fn]?.(...a); } catch { /* ignore */ } };
 
     function reset() {
+      track('start');
       history = []; // { jev, opp } from Jev's perspective (opp = human)
       score = [0, 0];
       busy = false;
@@ -149,6 +152,10 @@ export default {
       const [a, b] = PAYOFF[mine + jev];
       score = [score[0] + a, score[1] + b];
       history.push({ jev, opp: mine });
+      const ph = `r${history.length}`;
+      track('human', { ph, act: mine });
+      track('opp', res, { ph, act: jev });
+      if (history.length >= TOTAL) track('end', score[0] > score[1] ? 'win' : score[0] < score[1] ? 'lose' : 'draw');
       panel.show(res, {
         labels: () => ({ cooperate: t('pd.cooperate'), defect: t('pd.defect') }),
         picked: jevAct,
