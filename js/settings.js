@@ -6,12 +6,15 @@ const listeners = new Set();
 const defaults = {
   lang: (navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh' : 'en',
   theme: 'auto',            // auto | light | dark
-  mode: CONFIG.proxyUrl ? 'jev' : 'local', // jev | local
-  play: 'mixed',            // mixed: sample from Jev's distribution | greedy: argmax
+  jevMode: 'hinted',        // hinted: code computes odds for Jev | raw: Jev sees only the raw record
 };
 
-let state = { ...defaults, ...safeParse(localStorage.getItem(KEY)) };
-if (state.mode === 'jev' && !CONFIG.proxyUrl && !getByokKey()) state.mode = 'local';
+let state = { ...defaults, ...safeParse(storageGet(KEY)) };
+if (!['hinted', 'raw'].includes(state.jevMode)) state.jevMode = 'hinted';
+
+function storageGet(k) {
+  try { return localStorage.getItem(k); } catch { return null; }
+}
 
 function safeParse(s) {
   try { return JSON.parse(s) || {}; } catch { return {}; }
@@ -22,7 +25,7 @@ export const settings = {
   set(k, v) {
     if (state[k] === v) return;
     state = { ...state, [k]: v };
-    localStorage.setItem(KEY, JSON.stringify(state));
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* storage blocked: settings last for this visit only */ }
     listeners.forEach((fn) => fn(k, v));
   },
   onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
@@ -30,7 +33,9 @@ export const settings = {
 
 // A personal API key (bring-your-own-key) is kept in sessionStorage only:
 // it disappears when the tab closes and is never sent anywhere except TypeSafe.
-export function getByokKey() { return sessionStorage.getItem('jev-byok') || ''; }
+export function getByokKey() {
+  try { return sessionStorage.getItem('jev-byok') || ''; } catch { return ''; }
+}
 export function setByokKey(k) {
   if (k) sessionStorage.setItem('jev-byok', k.trim());
   else sessionStorage.removeItem('jev-byok');

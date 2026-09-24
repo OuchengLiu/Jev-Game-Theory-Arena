@@ -3,7 +3,7 @@
 //
 // All pattern mining (frequencies, win-stay / lose-shift habits, sequences) happens
 // here in code and is handed to Jev as plain words and ready-made "clues".
-import { S } from '../schema.js';
+import { S, SchemaError } from '../schema.js';
 
 export const THROWS = ['rock', 'paper', 'scissors'];
 /** COUNTER[x] is the throw that beats x. */
@@ -76,12 +76,48 @@ function habitWords(hb) {
   return `${hb.share >= 0.8 ? 'almost always' : 'usually'} ${REL_WORDS[hb.key]}`;
 }
 
+const SCHEMA = S.obj({
+  round: S.int(1, 20),
+  total: S.int(1, 20),
+  history: S.list(S.obj({ human: THROW, jev: THROW, outcome: OUTCOME }), 20),
+});
+
+// ---------- Raw mode: the bare record, no frequencies, habits or clues ----------
+function buildRaw({ round, total, history }) {
+  if (round > total || round !== history.length + 1) throw new SchemaError('payload.round: inconsistent with history');
+  const score = { opponent_round_wins: 0, your_round_wins: 0, draws: 0 };
+  const words = { human_won: 'the opponent won', jev_won: 'you won', draw: 'draw' };
+  const rounds = history.map((r, i) => {
+    if (outcomeOf(r.human, r.jev) !== r.outcome) throw new SchemaError(`payload.history[${i}].outcome: inconsistent`);
+    score[r.outcome === 'human_won' ? 'opponent_round_wins' : r.outcome === 'jev_won' ? 'your_round_wins' : 'draws'] += 1;
+    return `Round ${i + 1}: opponent threw ${r.human}, you threw ${r.jev}; ${words[r.outcome]}.`;
+  });
+  const state = {
+    game: 'Rock-paper-scissors against a human opponent. Rock beats scissors, scissors beats paper, paper beats rock; the same throw is a draw.',
+    your_task: 'Predict the opponent\'s NEXT throw. Both throw at the same time; your prediction is used to pick your counter-throw.',
+    round: `Round ${round} of ${total}.`,
+    history: rounds.length ? rounds : ['No rounds played yet.'],
+    score,
+  };
+  return {
+    state,
+    questions: {
+      predict: {
+        type: 'choice',
+        instructions: 'Which throw will the opponent play next round?',
+        criteria: Object.fromEntries(THROWS.map((x) => [x, `The opponent will throw ${x}`])),
+      },
+      patterned: {
+        type: 'noul',
+        instructions: 'Does the opponent\'s play follow a pattern that could be exploited, rather than looking random?',
+      },
+    },
+  };
+}
+
 export default {
-  schema: S.obj({
-    round: S.int(1, 20),
-    total: S.int(1, 20),
-    history: S.list(S.obj({ human: THROW, jev: THROW, outcome: OUTCOME }), 20),
-  }),
+  schema: SCHEMA,
+  raw: { schema: SCHEMA, build: buildRaw },
 
   build({ round, total, history }) {
     const a = analyze(history);

@@ -7,5 +7,5 @@ export const CONFIG = {
   // Cloudflare Turnstile site key (public). Leave empty to disable the human check.
   turnstileSiteKey: '',
   requestTimeoutMs: 8000,
-  repoUrl: 'https://github.com/your-name/jev-game-theory',
+  repoUrl: 'https://github.com/OuchengLiu/Jev-Game-Theory-Arena',
 };

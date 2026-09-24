@@ -1,6 +1,8 @@
 // Heads-up Limit Texas Hold'em — Jev plays one seat.
-// All maths (hand class, draws, Monte-Carlo equity, pot odds, opponent stats) is done in
-// the browser; the payload only carries semantic buckets, which we turn into plain English.
+// Hinted mode: all maths (hand class, draws, Monte-Carlo equity, pot odds, opponent stats) is
+// done in the browser; the payload only carries semantic buckets, turned into plain English.
+// Raw mode (bottom of file): no evaluation at all — cards, chips, the betting record, recent
+// results and the literal legal actions, all as enums and bounded integers.
 import { S, CARDS, cardName, SchemaError } from '../schema.js';
 
 const STREET = S.enumv('preflop', 'flop', 'turn', 'river');
@@ -222,4 +224,180 @@ function build(p) {
   };
 }
 
-export default { schema, build };
+// =====================================================================================
+// Raw mode: the literal record only. No equity, hand category, draws, pot odds or profiles.
+// =====================================================================================
+
+const MAX_CHIPS = 400; // both 200-chip stacks
+const CHIPS = S.int(0, MAX_CHIPS);
+const HAND_NAME_TEXT = {
+  high_card: 'High card', pair: 'One pair', two_pair: 'Two pair', trips: 'Three of a kind',
+  straight: 'Straight', flush: 'Flush', full_house: 'Full house', quads: 'Four of a kind',
+  straight_flush: 'Straight flush', royal_flush: 'Royal flush',
+};
+const RAW_ACT = S.enumv('small_blind', 'big_blind', 'fold', 'check', 'call', 'bet', 'raise');
+const WHO = S.enumv('jev', 'opp');
+
+const PAST = S.obj({
+  hand_no: S.int(1, 100000),
+  winner: S.enumv('jev', 'opp', 'split'),
+  pot: CHIPS,
+  ended: S.enumv('fold', 'showdown'),
+  street: STREET,
+  jev_dealer: S.bool(),
+  jev_hole: S.list(CARD, 2),
+  board: S.list(CARD, 5),
+  opp_hole: S.optional(S.list(CARD, 2)),
+  jev_hand: S.optional(e(HAND_NAME_TEXT)),
+  opp_hand: S.optional(e(HAND_NAME_TEXT)),
+});
+
+const RAW_SCHEMA = S.obj({
+  hand_no: S.int(1, 100000),
+  street: STREET,
+  hole: S.list(CARD, 2),
+  board: S.list(CARD, 5),
+  dealer: WHO,
+  pot: CHIPS,
+  jev_stack: CHIPS,
+  opp_stack: CHIPS,
+  jev_bet: CHIPS,
+  opp_bet: CHIPS,
+  actions: S.list(S.obj({ street: STREET, actor: WHO, act: RAW_ACT, amount: CHIPS, allin: S.bool() }), 32),
+  legal: S.list(ACT, 3),
+  call_amount: CHIPS,
+  raise_to: CHIPS,
+  raise_add: CHIPS,
+  recent: S.list(PAST, 6),
+});
+
+const unique = (cards) => new Set(cards).size === cards.length;
+
+function validateRaw(p) {
+  const bad = (m) => { throw new SchemaError(`payload: ${m}`); };
+  if (p.hole.length !== 2) bad('hole must have 2 cards');
+  if (p.board.length !== BOARD_LEN[p.street]) bad('board size does not match street');
+  if (!unique([...p.hole, ...p.board])) bad('duplicate cards');
+  const legal = [...p.legal].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
+  if (!LEGAL_SETS.includes(legal.join(','))) bad('inconsistent legal actions');
+  if (legal.includes('call') !== p.call_amount > 0) bad('call amount does not match legal actions');
+  const aggr = legal.includes('bet') || legal.includes('raise');
+  if (aggr ? !(p.raise_add > 0 && p.raise_to >= p.raise_add) : p.raise_add || p.raise_to) bad('raise amounts do not match legal actions');
+  if (p.jev_stack + p.opp_stack + p.pot > MAX_CHIPS) bad('too many chips');
+  for (const r of p.recent) {
+    if (r.jev_hole.length !== 2) bad('recent: hole must have 2 cards');
+    if (r.ended === 'showdown') {
+      if (r.board.length !== 5 || r.opp_hole?.length !== 2 || !r.jev_hand || !r.opp_hand) bad('recent: incomplete showdown');
+    } else if (r.winner === 'split' || r.opp_hole || r.jev_hand || r.opp_hand || r.board.length !== BOARD_LEN[r.street]) {
+      bad('recent: inconsistent fold');
+    }
+    if (!unique([...r.jev_hole, ...(r.opp_hole || []), ...r.board])) bad('recent: duplicate cards');
+  }
+  return legal;
+}
+
+const chips = (n) => `${n} chip${n === 1 ? '' : 's'}`;
+const cap = (x) => x[0].toUpperCase() + x.slice(1);
+const cardList = (cs) => cs.map(cardName).join(', ');
+
+const RAW_STREET = {
+  preflop: 'Preflop (no community cards yet)',
+  flop: 'Flop (3 community cards)',
+  turn: 'Turn (4 community cards)',
+  river: 'River (all 5 community cards; the last betting round)',
+};
+const STREET_NAME = { preflop: 'Preflop', flop: 'Flop', turn: 'Turn', river: 'River' };
+
+function actionPhrase(x) {
+  const you = x.actor === 'jev';
+  const s = (verb, plural) => (you ? `You ${verb}` : `Opponent ${plural || `${verb}s`}`);
+  const allin = x.allin ? ' (all-in)' : '';
+  switch (x.act) {
+    case 'small_blind': return `${s('post')} the small blind of ${x.amount}${allin}`;
+    case 'big_blind': return `${s('post')} the big blind of ${x.amount}${allin}`;
+    case 'fold': return s('fold');
+    case 'check': return s('check');
+    case 'call': return `${s('call')} ${x.amount}${allin}`;
+    case 'bet': return `${s('bet')} ${x.amount}${allin}`;
+    default: return `${s('raise')} to ${x.amount}${allin}`;
+  }
+}
+
+function rawHistory(actions) {
+  const out = [];
+  for (const st of ['preflop', 'flop', 'turn', 'river']) {
+    const acts = actions.filter((x) => x.street === st);
+    if (acts.length) out.push(`${STREET_NAME[st]}: ${acts.map(actionPhrase).join('; ')}`);
+  }
+  return out.length ? out : ['No actions yet this hand.'];
+}
+
+function recentLine(r) {
+  const where = r.street === 'preflop' ? 'before the flop' : `on the ${r.street}`;
+  let head;
+  if (r.winner === 'split') head = `split a ${r.pot}-chip pot at showdown`;
+  else {
+    const winner = r.winner === 'jev' ? 'You' : 'Opponent';
+    const net = r.pot / 2;
+    head = r.ended === 'showdown'
+      ? `${winner} won a ${r.pot}-chip pot at showdown (${net} chips from the loser)`
+      : `${winner} won a ${r.pot}-chip pot (${net} chips from the loser) because ${r.winner === 'jev' ? 'the opponent' : 'you'} folded ${where}`;
+  }
+  const parts = [`Hand ${r.hand_no}: ${cap(head)}.`];
+  parts.push(`Dealer: ${r.jev_dealer ? 'you' : 'opponent'}.`);
+  parts.push(`Your cards: ${cardList(r.jev_hole)}${r.jev_hand ? ` (${HAND_NAME_TEXT[r.jev_hand]})` : ''}.`);
+  if (r.opp_hole) parts.push(`Opponent showed: ${cardList(r.opp_hole)} (${HAND_NAME_TEXT[r.opp_hand]}).`);
+  else if (r.ended === 'fold') parts.push('Opponent cards: not shown.');
+  parts.push(`Board: ${r.board.length ? cardList(r.board) : 'none dealt'}.`);
+  return parts.join(' ');
+}
+
+function buildRaw(p) {
+  const legal = validateRaw(p);
+  const allinCall = p.call_amount >= p.jev_stack ? ' (all of your remaining chips)' : '';
+  const allinRaise = p.raise_add >= p.jev_stack ? ' (all of your remaining chips)' : '';
+  const CRIT = {
+    fold: 'Fold: give up the pot. The chips you have already put in stay in the pot.',
+    check: 'Check: put in no chips.',
+    call: `Call ${chips(p.call_amount)}: put in ${chips(p.call_amount)} to match the opponent${allinCall}.`,
+    bet: `Bet ${chips(p.raise_add)}: put in ${chips(p.raise_add)}${allinRaise}.`,
+    raise: `Raise to ${chips(p.raise_to)} this betting round: put in ${chips(p.raise_add)} more${allinRaise}.`,
+  };
+  const state = {
+    game: "Heads-up Limit Texas Hold'em: you against one opponent, many hands in a row. Both players started the match with 200 chips. Blinds 1 and 2. Every bet or raise is a fixed size: 2 chips preflop and on the flop, 4 chips on the turn and river. At most 4 bets per street. Best five of seven cards wins at showdown.",
+    goal: "Win as many of the opponent's chips as possible; the match ends when one player has none left.",
+    hand: `Hand ${p.hand_no} of the match.`,
+    street: RAW_STREET[p.street],
+    your_cards: p.hole.map(cardName),
+    board: p.board.length ? p.board.map(cardName) : 'none yet',
+    dealer: p.dealer === 'jev'
+      ? 'You have the dealer button: you posted the small blind, you act first before the flop and last on the flop, turn and river.'
+      : 'The opponent has the dealer button: they posted the small blind and you posted the big blind; you act last before the flop and first on the flop, turn and river.',
+    pot: chips(p.pot),
+    your_stack: `${chips(p.jev_stack)} behind`,
+    opponent_stack: `${chips(p.opp_stack)} behind`,
+    this_betting_round: `Chips put in during this betting round: you ${p.jev_bet}, opponent ${p.opp_bet}.`,
+    actions_this_hand: rawHistory(p.actions),
+    recent_hands: p.recent.length ? p.recent.slice().reverse().map(recentLine) : 'No earlier hands yet.',
+  };
+  return {
+    state,
+    questions: {
+      action: {
+        type: 'choice',
+        instructions: 'Which action should you take now to win the most chips over the long run? You may mix: sometimes bluff, sometimes slow-play.',
+        criteria: Object.fromEntries(legal.map((a) => [a, CRIT[a]])),
+      },
+      opp_bluffing: {
+        type: 'noul',
+        instructions: 'Is the opponent likely bluffing or semi-bluffing with a weaker hand than yours?',
+      },
+      ahead: {
+        type: 'noul',
+        instructions: "Does your hand currently beat the opponent's likely hand?",
+      },
+    },
+  };
+}
+
+export default { schema, build, raw: { schema: RAW_SCHEMA, build: buildRaw } };

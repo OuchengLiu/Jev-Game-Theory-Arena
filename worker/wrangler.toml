@@ -4,7 +4,7 @@ compatibility_date = "2026-09-01"
 
 [vars]
 # Comma-separated list of origins allowed to call the proxy (no trailing slash).
-ALLOWED_ORIGINS = "https://your-name.github.io,http://localhost:8000"
+ALLOWED_ORIGINS = "https://ouchengliu.github.io,http://localhost:8000"
 # Global cap on Jev calls per UTC day (requires the USAGE KV namespace below).
 DAILY_LIMIT = "20000"
 

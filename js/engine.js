@@ -7,7 +7,7 @@
 
 import { buildJevRequest } from '../shared/prompts.js';
 import { CONFIG } from './config.js';
-import { settings, getByokKey } from './settings.js';
+import { settings, getByokKey, jevAvailable } from './settings.js';
 
 const TYPESAFE_URL = 'https://api.typesafe.ai/v1/systemone';
 
@@ -33,17 +33,18 @@ async function postJson(url, body, headers = {}) {
   }
 }
 
-async function askJev(game, payload) {
+async function askJev(game, payload, mode) {
   const key = getByokKey();
-  if (key) return postJson(TYPESAFE_URL, buildJevRequest(game, payload), { Authorization: `Bearer ${key}` });
+  if (key) return postJson(TYPESAFE_URL, buildJevRequest(game, payload, mode), { Authorization: `Bearer ${key}` });
   if (!CONFIG.proxyUrl) throw new Error('no-endpoint');
-  if (!CONFIG.turnstileSiteKey) return postJson(CONFIG.proxyUrl, { game, payload });
+  const body = { game, mode, payload };
+  if (!CONFIG.turnstileSiteKey) return postJson(CONFIG.proxyUrl, body);
   try {
-    return await postJson(CONFIG.proxyUrl, { game, payload }, { 'X-Session': await getSession() });
+    return await postJson(CONFIG.proxyUrl, body, { 'X-Session': await getSession() });
   } catch (e) {
     if (e.status !== 401) throw e;
     session = null; // expired: redo the human check once
-    return postJson(CONFIG.proxyUrl, { game, payload }, { 'X-Session': await getSession() });
+    return postJson(CONFIG.proxyUrl, body, { 'X-Session': await getSession() });
   }
 }
 
@@ -86,26 +87,30 @@ function turnstileToken() {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * @param {string} game     game id (matches shared/prompts.js)
- * @param {object} payload  compact, schema-checked game state
- * @param {(payload) => object} local  built-in bot returning answers in API shape
+ * @param {string} game  game id (matches shared/prompts.js)
+ * @param {object | ((mode: 'hinted'|'raw') => object)} makePayload
+ *        schema-checked game state, or a function building it for the current Jev mode
+ *        ('hinted': code-computed odds as semantic buckets; 'raw': raw record only)
+ * @param {(hintedPayload) => object} local  practice bot, used when Jev is unreachable
  */
-export async function decide(game, payload, local) {
+export async function decide(game, makePayload, local) {
   const t0 = performance.now();
+  const build = typeof makePayload === 'function' ? makePayload : () => makePayload;
+  const mode = settings.get('jevMode');
   let error;
-  if (settings.get('mode') === 'jev') {
+  if (jevAvailable()) {
     try {
-      const data = await askJev(game, payload);
-      return { answers: data.answers, model: data.model, source: 'jev', ms: Math.round(performance.now() - t0) };
+      const data = await askJev(game, build(mode), mode);
+      return { answers: data.answers, model: data.model, source: 'jev', mode, ms: Math.round(performance.now() - t0) };
     } catch (e) {
-      error = e.status === 429 ? 'rate-limited' : e.message === 'no-endpoint' ? 'no-endpoint' : 'unavailable';
-      console.warn('[jev] falling back to built-in bot:', e);
+      error = e.status === 429 ? 'rate-limited' : 'unavailable';
+      console.warn('[jev] falling back to practice bot:', e);
     }
-  }
-  const answers = local(payload);
+  } else error = 'no-endpoint';
+  const answers = local(build('hinted'));
   const elapsed = performance.now() - t0;
   if (elapsed < 450) await sleep(450 - elapsed); // give the bot a moment to "think"
-  return { answers, model: 'built-in', source: 'local', ms: Math.round(performance.now() - t0), error };
+  return { answers, model: 'practice bot', source: 'local', mode, ms: Math.round(performance.now() - t0), error };
 }
 
 // ---------- helpers for games & built-in bots ----------
@@ -131,14 +136,11 @@ export function choiceAnswer(weights) {
 export const noulAnswer = (p) => ({ type: 'noul', noul: Math.min(1, Math.max(0, p)) });
 
 /**
- * Pick an action from a Choice answer, restricted to `legal`.
- * 'mixed' samples from the distribution (a true mixed strategy); 'greedy' takes argmax.
+ * Pick an action from a Choice answer, restricted to `legal`, by sampling from the
+ * distribution: Jev always plays a true mixed strategy.
  */
 export function pickAction(answer, legal) {
   const probs = normalize(Object.fromEntries(legal.map((a) => [a, answer?.probabilities?.[a] ?? 0])));
-  if (settings.get('play') === 'greedy') {
-    return legal.reduce((a, b) => (probs[b] > probs[a] ? b : a));
-  }
   let r = Math.random();
   for (const a of legal) {
     r -= probs[a];

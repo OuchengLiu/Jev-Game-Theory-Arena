@@ -3,13 +3,19 @@
 // The browser never sees the TypeSafe API key. This Worker:
 //   1. only answers POST /decide (and POST /session when Turnstile is enabled)
 //   2. only accepts requests whose Origin is in ALLOWED_ORIGINS
-//   3. validates { game, payload } against strict per-game schemas and builds the
+//   3. validates { game, mode, payload } against strict per-game schemas and builds the
 //      Jev prompt itself (shared/prompts.js), so it cannot be used as a generic Jev proxy
-//   4. rate-limits per IP (Cloudflare Rate Limiting binding) and caps total daily calls (KV)
+//   4. limits bursts per visitor (Rate Limiting bindings), caps daily calls per visitor and
+//      site-wide, and blocks visitors who keep sending invalid requests (Guard Durable Object)
 //   5. optionally requires a Cloudflare Turnstile check, exchanged for a short-lived signed session
 //   6. returns only { model, answers }
+//
+// Every refusal is JSON: { error: <code>, retryAfter?: <seconds> } so the site can explain it.
+//   burst · ip_daily · global_daily · blocked · not_configured · upstream_busy · unavailable
+//   bad_request · session_required · forbidden
 
 import { buildJevRequest, SchemaError } from '../../shared/prompts.js';
+export { Guard } from './guard.js';
 
 const TYPESAFE_URL = 'https://api.typesafe.ai/v1/systemone';
 const MAX_BODY_BYTES = 8 * 1024;
@@ -24,69 +30,83 @@ export default {
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, X-Session',
+      'Access-Control-Expose-Headers': 'Retry-After',
       'Access-Control-Max-Age': '86400',
       Vary: 'Origin',
     } : { Vary: 'Origin' };
     const json = (status, body) => new Response(JSON.stringify(body), {
       status,
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...cors },
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        ...(body.retryAfter ? { 'Retry-After': String(body.retryAfter) } : {}),
+        ...cors,
+      },
     });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: originOk ? 204 : 403, headers: cors });
-    if (!originOk) return json(403, { error: 'origin not allowed' });
-    if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+    if (!originOk) return json(403, { error: 'forbidden' });
+    if (request.method !== 'POST') return json(405, { error: 'forbidden' });
 
     const url = new URL(request.url);
-    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    if (url.pathname !== '/decide' && url.pathname !== '/session') return json(404, { error: 'forbidden' });
 
-    // ---- per-IP rate limit ----
-    if (env.RATE_LIMITER) {
-      const { success } = await env.RATE_LIMITER.limit({ key: ip });
-      if (!success) return json(429, { error: 'rate limited' });
+    const ip = await hashIp(request.headers.get('CF-Connecting-IP') || 'unknown');
+    const guard = env.GUARD ? env.GUARD.get(env.GUARD.idFromName('global')) : null;
+    const askGuard = async (op) => {
+      if (!guard) return { ok: true };
+      const r = await guard.fetch('https://guard/', { method: 'POST', body: JSON.stringify({ op, ip }) });
+      return r.json();
+    };
+    const refuse = (verdict) => json(verdict.reason === 'blocked' ? 403 : 429, { error: verdict.reason, retryAfter: verdict.retryAfter });
+
+    // ---- short bursts: 10-second and 1-minute windows per visitor ----
+    for (const [limiter, period] of [[env.BURST_LIMITER, 10], [env.RATE_LIMITER, 60]]) {
+      if (!limiter) continue;
+      const { success } = await limiter.limit({ key: ip });
+      if (!success) return json(429, { error: 'burst', retryAfter: period });
     }
 
     let body;
     try {
       const text = await request.text();
-      if (text.length > MAX_BODY_BYTES) return json(413, { error: 'payload too large' });
+      if (text.length > MAX_BODY_BYTES) throw new Error('too large');
       body = JSON.parse(text);
     } catch {
-      return json(400, { error: 'invalid json' });
+      const v = await askGuard('invalid');
+      return v.ok ? json(400, { error: 'bad_request' }) : refuse(v);
     }
 
     // ---- Turnstile → session exchange ----
     if (url.pathname === '/session') {
-      if (!env.TURNSTILE_SECRET) return json(404, { error: 'not enabled' });
-      const ok = await verifyTurnstile(env.TURNSTILE_SECRET, body?.token, ip);
-      if (!ok) return json(403, { error: 'human check failed' });
+      if (!env.TURNSTILE_SECRET) return json(404, { error: 'forbidden' });
+      const ok = await verifyTurnstile(env.TURNSTILE_SECRET, body?.token, request.headers.get('CF-Connecting-IP'));
+      if (!ok) return json(403, { error: 'session_required' });
       const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_S;
       return json(200, { session: await sign(env.SESSION_SECRET, `${exp}`), exp });
     }
 
-    if (url.pathname !== '/decide') return json(404, { error: 'not found' });
-
     if (env.TURNSTILE_SECRET) {
       const ok = await verifySession(env.SESSION_SECRET, request.headers.get('X-Session'));
-      if (!ok) return json(401, { error: 'session required' });
+      if (!ok) return json(401, { error: 'session_required' });
     }
 
-    // ---- validate + build prompt server-side ----
+    // ---- validate + build prompt server-side (invalid requests count towards a block) ----
     let jevRequest;
     try {
       if (typeof body?.game !== 'string') throw new SchemaError('game missing');
-      jevRequest = buildJevRequest(body.game, body.payload);
+      jevRequest = buildJevRequest(body.game, body.payload, body.mode ?? 'hinted');
     } catch (e) {
-      return json(400, { error: e instanceof SchemaError ? e.message : 'bad request' });
+      const v = await askGuard('invalid');
+      if (!v.ok) return refuse(v);
+      return json(400, { error: 'bad_request', detail: e instanceof SchemaError ? e.message : undefined });
     }
 
-    // ---- global daily budget ----
-    if (env.USAGE) {
-      const day = new Date().toISOString().slice(0, 10);
-      const key = `calls:${day}`;
-      const used = Number(await env.USAGE.get(key)) || 0;
-      if (used >= Number(env.DAILY_LIMIT || 20000)) return json(429, { error: 'daily budget exhausted' });
-      ctx.waitUntil(env.USAGE.put(key, String(used + 1), { expirationTtl: 60 * 60 * 48 }));
-    }
+    if (!env.TYPESAFE_API_KEY) return json(503, { error: 'not_configured', retryAfter: 600 });
+
+    // ---- daily quotas (per visitor and site-wide) + block list ----
+    const verdict = await askGuard('consume');
+    if (!verdict.ok) return refuse(verdict);
 
     // ---- call Jev ----
     try {
@@ -98,25 +118,33 @@ export default {
       });
       if (!res.ok) {
         console.log('upstream error', res.status, await res.text().catch(() => ''));
-        return json(res.status === 429 ? 429 : 502, { error: 'upstream error' });
+        if (res.status === 429) return json(503, { error: 'upstream_busy', retryAfter: 60 });
+        if (res.status === 401 || res.status === 403) return json(503, { error: 'not_configured', retryAfter: 600 });
+        return json(502, { error: 'unavailable', retryAfter: 30 });
       }
       const data = await res.json();
       return json(200, { model: data.model, answers: data.answers });
     } catch (e) {
       console.log('upstream failure', e?.message);
-      return json(504, { error: 'upstream timeout' });
+      return json(504, { error: 'unavailable', retryAfter: 30 });
     }
   },
 };
 
 // ---------------- helpers ----------------
 
+// Visitors are tracked by a salted hash of their IP, never the raw address.
+async function hashIp(ip) {
+  const digest = await crypto.subtle.digest('SHA-256', enc.encode(`jev-gtl:${ip}`));
+  return b64url(digest).slice(0, 22);
+}
+
 async function verifyTurnstile(secret, token, ip) {
   if (typeof token !== 'string' || token.length > 4096) return false;
   const form = new FormData();
   form.append('secret', secret);
   form.append('response', token);
-  form.append('remoteip', ip);
+  if (ip) form.append('remoteip', ip);
   const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form });
   const out = await r.json().catch(() => ({}));
   return out.success === true;

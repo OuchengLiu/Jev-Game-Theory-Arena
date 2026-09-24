@@ -68,14 +68,80 @@ function roundStatus(round, total) {
   return 'Several rounds remain; reputation still matters.';
 }
 
+const SCHEMA = S.obj({
+  role: S.enumv('propose', 'respond'),
+  round: S.int(1, ROUNDS),
+  total: S.int(1, ROUNDS),
+  offer: S.optional(S.int(0, POT)), // required when role = 'respond' (the human's offer to Jev)
+  history: S.list(S.obj({ proposer: S.enumv('human', 'jev'), offer: S.int(0, POT), accepted: S.bool() }), ROUNDS),
+});
+
+const coinsWord = (k) => `${k} coin${k === 1 ? '' : 's'}`;
+
+// ---------- Raw mode: the bare record, no fairness words, profiles or evidence ----------
+function buildRaw({ role, round, total, offer, history }) {
+  if (round > total || round !== history.length + 1) throw new SchemaError('payload.round: inconsistent with history');
+  if (role === 'respond' && offer === undefined) throw new SchemaError('payload.offer: missing');
+  if (role === 'propose' && offer !== undefined) throw new SchemaError('payload.offer: unexpected');
+  let you = 0;
+  let human = 0;
+  const rounds = history.map((r, i) => {
+    const toJev = r.accepted ? (r.proposer === 'human' ? r.offer : POT - r.offer) : 0;
+    const toHuman = r.accepted ? (r.proposer === 'human' ? POT - r.offer : r.offer) : 0;
+    you += toJev;
+    human += toHuman;
+    const what = r.proposer === 'jev'
+      ? `you proposed, offering the human ${r.offer} and keeping ${POT - r.offer}; the human ${r.accepted ? 'accepted' : 'rejected'}`
+      : `the human proposed, offering you ${r.offer} and keeping ${POT - r.offer}; you ${r.accepted ? 'accepted' : 'rejected'}`;
+    return `Round ${i + 1}: ${what}. You got ${toJev}, the human got ${toHuman}.`;
+  });
+  const state = {
+    game: `Repeated Ultimatum Game between you and a human, ${total} rounds, roles alternate. Each round a pot of ${POT} coins is split: the proposer offers some coins to the responder; if the responder accepts, both get their share; if the responder rejects, both get nothing.`,
+    goal: 'Maximise YOUR total coins over all rounds.',
+    round: `Round ${round} of ${total}.`,
+    your_role: role === 'propose' ? 'You are the PROPOSER this round; the human responds.' : 'You are the RESPONDER this round; the human proposed.',
+    history: rounds.length ? rounds : ['No rounds played yet.'],
+    score: { you, human },
+  };
+  if (role === 'propose') {
+    return {
+      state,
+      questions: {
+        offer: {
+          type: 'choice',
+          instructions: 'How many coins do you offer the human?',
+          criteria: Object.fromEntries(OFFERS.map((s) => {
+            const k = Number(s);
+            return [s, `Offer ${coinsWord(k)}, keep ${POT - k}`];
+          })),
+        },
+        human_rejects_unfair: {
+          type: 'noul',
+          instructions: 'Is this human the kind of player who rejects low offers, even at a cost to themselves?',
+        },
+      },
+    };
+  }
+  state.offer_on_the_table = `The human offers you ${coinsWord(offer)} and keeps ${POT - offer}.`;
+  return {
+    state,
+    questions: {
+      respond: {
+        type: 'choice',
+        instructions: 'Do you accept or reject the human\'s offer?',
+        criteria: { accept: 'Accept the offer', reject: 'Reject the offer' },
+      },
+      fair: {
+        type: 'noul',
+        instructions: 'Is the human\'s offer fair?',
+      },
+    },
+  };
+}
+
 export default {
-  schema: S.obj({
-    role: S.enumv('propose', 'respond'),
-    round: S.int(1, ROUNDS),
-    total: S.int(1, ROUNDS),
-    offer: S.optional(S.int(0, POT)), // required when role = 'respond' (the human's offer to Jev)
-    history: S.list(S.obj({ proposer: S.enumv('human', 'jev'), offer: S.int(0, POT), accepted: S.bool() }), ROUNDS),
-  }),
+  schema: SCHEMA,
+  raw: { schema: SCHEMA, build: buildRaw },
 
   build({ role, round, total, offer, history }) {
     const p = profile(history);

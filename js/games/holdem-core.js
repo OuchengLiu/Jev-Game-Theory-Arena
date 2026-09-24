@@ -88,6 +88,25 @@ export function handName(score) {
   return CATS[cat];
 }
 
+/** The five cards (subset of `cards`) that make the best hand, e.g. to highlight at showdown. */
+export function bestFive(cards) {
+  if (cards.length <= 5) return [...cards];
+  const target = evaluate(cards);
+  const n = cards.length;
+  const pick = [];
+  const rec = (start) => {
+    if (pick.length === 5) return evaluate(pick) === target ? [...pick] : null;
+    for (let i = start; i <= n - (5 - pick.length); i++) {
+      pick.push(cards[i]);
+      const r = rec(i + 1);
+      pick.pop();
+      if (r) return r;
+    }
+    return null;
+  };
+  return rec(0) || cards.slice(0, 5);
+}
+
 // ---------------- equity (Monte-Carlo vs a random hand) ----------------
 
 export function equity(hole, board, samples = 600, rng = Math.random) {
@@ -208,8 +227,8 @@ export function newHand(stacks, button, rng = Math.random) {
     toAct: button, history: [], log: [], done: false, result: null,
   };
   const bb = 1 - button;
-  post(hand, button, SB); hand.log.push({ street: 0, who: button, act: 'sb', amount: hand.total[button] });
-  post(hand, bb, BB); hand.log.push({ street: 0, who: bb, act: 'bb', amount: hand.total[bb] });
+  post(hand, button, SB); hand.log.push({ street: 0, who: button, act: 'sb', amount: hand.total[button], allin: hand.stacks[button] === 0 });
+  post(hand, bb, BB); hand.log.push({ street: 0, who: bb, act: 'bb', amount: hand.total[bb], allin: hand.stacks[bb] === 0 });
   if (hand.stacks[0] === 0 || hand.stacks[1] === 0) {
     // someone is all-in from the blind: no betting possible beyond matching
     const short = hand.contrib[button] < hand.contrib[bb] && hand.stacks[button] > 0;
@@ -366,6 +385,73 @@ export function makePayload(hand, p, stats, samples = 600, rng = Math.random) {
     pot: pot < 8 ? 'small' : pot < 20 ? 'medium' : pot < 40 ? 'large' : 'huge',
     chips: lead > 120 ? 'well_ahead' : lead > 30 ? 'ahead' : lead >= -30 ? 'even' : lead >= -120 ? 'behind' : 'well_behind',
     legal: legalActions(hand),
+  };
+}
+
+// ---------------- raw payload (no code-computed evaluation at all) ----------------
+
+export const HAND_NAMES = [...CATS, 'royal_flush'];
+
+/** Neutral record of a finished hand, kept by the UI for the raw payload's recent-hands list. */
+export function summarizeHand(hand, handNo) {
+  const r = hand.result;
+  return {
+    handNo, winner: r.winner, pot: r.pot, showdown: r.showdown, street: hand.street, button: hand.button,
+    holes: hand.holes.map((x) => [...x]), board: [...hand.board], names: r.names ? [...r.names] : null,
+  };
+}
+
+function pastFor(r, p) {
+  const o = 1 - p;
+  const out = {
+    hand_no: r.handNo,
+    winner: r.winner === -1 ? 'split' : r.winner === p ? 'jev' : 'opp',
+    pot: r.pot,
+    ended: r.showdown ? 'showdown' : 'fold',
+    street: STREETS[r.street],
+    jev_dealer: r.button === p,
+    jev_hole: r.holes[p].map(cardStr),
+    board: r.board.map(cardStr),
+  };
+  if (r.showdown) {
+    out.opp_hole = r.holes[o].map(cardStr);
+    out.jev_hand = r.names[p];
+    out.opp_hand = r.names[o];
+  }
+  return out;
+}
+
+const RAW_ACT = { sb: 'small_blind', bb: 'big_blind' };
+
+/**
+ * Raw payload validated by shared/games/holdem.js (raw.schema): only the literal record,
+ * from player p's point of view (p must be the player to act). past: summarizeHand() records.
+ */
+export function makeRawPayload(hand, p, past = [], handNo = 1) {
+  const o = 1 - p;
+  const legal = legalActions(hand);
+  const aggr = legal.includes('bet') ? 'bet' : legal.includes('raise') ? 'raise' : null;
+  const add = aggr ? amountFor(hand, aggr) : 0;
+  return {
+    hand_no: handNo,
+    street: STREETS[hand.street],
+    hole: hand.holes[p].map(cardStr),
+    board: hand.board.map(cardStr),
+    dealer: hand.button === p ? 'jev' : 'opp',
+    pot: potSize(hand),
+    jev_stack: hand.stacks[p],
+    opp_stack: hand.stacks[o],
+    jev_bet: hand.contrib[p],
+    opp_bet: hand.contrib[o],
+    actions: hand.log.slice(-32).map((e) => ({
+      street: STREETS[e.street], actor: e.who === p ? 'jev' : 'opp', act: RAW_ACT[e.act] || e.act,
+      amount: e.amount ?? 0, allin: !!e.allin,
+    })),
+    legal,
+    call_amount: legal.includes('call') ? amountFor(hand, 'call') : 0,
+    raise_to: add ? hand.contrib[p] + add : 0,
+    raise_add: add,
+    recent: past.slice(-6).map((r) => pastFor(r, p)),
   };
 }
 

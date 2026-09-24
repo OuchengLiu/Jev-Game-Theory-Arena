@@ -155,6 +155,58 @@ export function makePayload(ownDice, oppCount, bids, oppStats) {
   return { payload, optionMap };
 }
 
+/**
+ * Raw-mode candidates: purely rule-based, no probabilities. For every face the smallest
+ * legal quantity, then (if room remains) one more than that. At most MAX_BID_OPTIONS.
+ */
+export function rawCandidateBids(current, totalDice) {
+  const first = [];
+  const second = [];
+  for (const face of FACES) {
+    const m = minQty(face, current);
+    if (m <= totalDice) first.push({ qty: m, face });
+    if (m + 1 <= totalDice) second.push({ qty: m + 1, face });
+  }
+  return [...first, ...second].slice(0, MAX_BID_OPTIONS).sort((a, b) => a.qty - b.qty || a.face - b.face);
+}
+
+/**
+ * Raw-mode Jev payload (see shared/games/liarsdice.js `raw`): the raw record only.
+ * `bids`: this round's bids in order from Jev's view ({by:'jev'|'opp', qty, face}).
+ * `pastRounds`: [{ bid:{by,qty,face}, called_by, actual, loser, opp_dice }] from Jev's view.
+ * Returns { payload, optionMap } like makePayload.
+ */
+export function makeRawPayload(ownDice, oppCount, bids, pastRounds = []) {
+  const current = bids.length ? bids[bids.length - 1] : null;
+  const optionMap = {};
+  const options = [];
+  if (current) {
+    options.push({ id: 'challenge' });
+    optionMap.challenge = { type: 'challenge' };
+  }
+  // Same candidate set as hinted mode, so the two modes differ only in what Jev is told
+  // (raw sees no likelihoods), not in which moves it may make.
+  candidateBids(ownDice, oppCount, current).forEach((b, i) => {
+    const id = BID_IDS[i];
+    options.push({ id, qty: b.qty, face: b.face });
+    optionMap[id] = { type: 'bid', qty: b.qty, face: b.face };
+  });
+  const payload = {
+    jev_dice: [...ownDice].sort((a, b) => a - b),
+    opp_dice_count: oppCount,
+    bids: bids.slice(-50).map((b) => ({ by: b.by, qty: b.qty, face: b.face })),
+    past_rounds: pastRounds.slice(-9).map((r) => ({
+      bid: { by: r.bid.by, qty: r.bid.qty, face: r.bid.face },
+      called_by: r.called_by,
+      actual: r.actual,
+      loser: r.loser,
+      opp_dice: [...r.opp_dice].sort((a, b) => a - b),
+    })),
+    options,
+  };
+  return { payload, optionMap };
+}
+
 // ---------------- built-in bot (weights only; the UI wraps them in API shape) ----------------
 
 const VAL = { certain: 1, very_likely: 0.9, likely: 0.72, coin_flip: 0.5, unlikely: 0.28, very_unlikely: 0.1, impossible: 0 };
