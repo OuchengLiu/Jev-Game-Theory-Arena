@@ -57,7 +57,7 @@ function cupSvg(id, open) {
 
 export default {
   id: 'liarsdice',
-  meta: { icon: '🎲', accent: '#c9a45c', minutes: 6, version: '1.3' },
+  meta: { icon: '🎲', accent: '#c9a45c', minutes: 6, version: '1.4' },
   strings: {
     en: {
       title: 'Liar’s Dice',

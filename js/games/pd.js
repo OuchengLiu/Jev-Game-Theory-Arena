@@ -51,7 +51,7 @@ const mark = (m, x, y, r, cls = '') => (m === 'C'
 
 export default {
   id: 'pd',
-  meta: { icon: 'handshake', accent: '#10b981', minutes: 3, version: '1.3' },
+  meta: { icon: 'handshake', accent: '#10b981', minutes: 3, version: '1.4' },
   strings: {
     en: {
       title: "Prisoner's Dilemma",
@@ -154,7 +154,7 @@ export default {
       const prev = history[history.length - 1]; // previous round (undefined in round 1)
       history.push({ jev, opp: mine });
       const ph = `r${history.length}`;
-      track('human', { ph, act: mine, x: prev ? `after_${prev.jev}` : undefined });
+      track('human', { ph, act: mine, x: prev ? `after_${prev.jev}` : undefined }, res);
       track('opp', res, { ph, act: jev, x: prev ? `after_${prev.opp}` : undefined });
       const pCoop = res.answers?.opp_will_cooperate?.noul;
       if (typeof pCoop === 'number') track('cal', res, { ph: 'opp_will_cooperate', p: pCoop, truth: mine === 'C' });

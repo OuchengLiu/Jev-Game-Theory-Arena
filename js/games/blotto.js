@@ -94,7 +94,7 @@ const sum = (a) => a.reduce((x, y) => x + y, 0);
 
 export default {
   id: 'blotto',
-  meta: { icon: '⚔️', accent: '#e11d48', minutes: 4, version: '1.3' },
+  meta: { icon: '⚔️', accent: '#e11d48', minutes: 4, version: '1.4' },
   strings: {
     en: {
       title: 'Colonel Blotto',
@@ -315,10 +315,16 @@ export default {
       const { fields, result } = resolve(you, jev);
       reveal = { you, jev, fields, result, step: 0, round: history.length + 1 };
       const ph = `r${reveal.round}`;
-      track('human', { ph, act: shape(you), x: result > 0 ? 'win' : result < 0 ? 'lose' : 'draw' });
+      track('human', { ph, act: shape(you), x: result > 0 ? 'win' : result < 0 ? 'lose' : 'draw' }, res);
       track('opp', res, { ph, act: shape(jev), x: result < 0 ? 'win' : result > 0 ? 'lose' : 'draw' });
       const pStack = res.answers?.opp_stacks?.noul;
       if (typeof pStack === 'number') track('cal', res, { ph: 'opp_stacks', p: pStack, truth: Math.max(...you) >= 5 });
+      // the match result is recorded with the last round's moves, not after the reveal animation
+      // (a player leaving during the animation would otherwise leave a match without an end)
+      if (history.length + 1 >= ROUNDS) {
+        const you2 = score.you + (result > 0 ? 1 : 0), jev2 = score.jev + (result < 0 ? 1 : 0);
+        track('end', you2 > jev2 ? 'win' : you2 < jev2 ? 'lose' : 'draw');
+      }
       phase = 'reveal';
       render();
       const quick = reducedMotion();
@@ -335,7 +341,6 @@ export default {
       history.push({ jev, opp: you });
       if (result > 0) score.you++; else if (result < 0) score.jev++; else score.draw++;
       phase = history.length >= ROUNDS ? 'over' : 'done';
-      if (phase === 'over') track('end', score.you > score.jev ? 'win' : score.you < score.jev ? 'lose' : 'draw');
       render();
     }
 

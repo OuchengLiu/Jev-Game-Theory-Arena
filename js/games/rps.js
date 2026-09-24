@@ -94,7 +94,7 @@ const P = (pt) => `${pt[0].toFixed(1)},${pt[1].toFixed(1)}`;
 
 export default {
   id: 'rps',
-  meta: { icon: 'hand', accent: '#ec4899', minutes: 2, version: '1.3' },
+  meta: { icon: 'hand', accent: '#ec4899', minutes: 2, version: '1.4' },
   strings: {
     en: {
       title: 'Rock · Paper · Scissors',
@@ -213,7 +213,7 @@ export default {
       if (guess === human) hits += 1;
       last = { human, jev, outcome, guess };
       const ph = `r${history.length}`;
-      track('human', { ph, act: human });
+      track('human', { ph, act: human }, res);
       track('opp', res, { ph, act: jev, x: top === human ? 'hit' : 'miss' });
       track('opp', res, { ph, act: top, x: 'pred' });
       track('cal', res, { ph: 'predict', p: pred[top], truth: top === human });

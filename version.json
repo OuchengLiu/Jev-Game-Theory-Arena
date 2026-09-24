@@ -1,26 +1,20 @@
 {
-  "version": "1.2.0",
+  "version": "1.2.1",
   "date": "2026-09-24",
   "notes": {
     "en": [
-      "Jev is live: play against the real model in every game",
-      "Each visit is randomly assigned an opponent mode (Jev Hinted or Raw) and a move choice (Top pick or By odds); you can switch either at any time",
-      "Top pick: Jev always plays the move it rates highest. By odds: its move is drawn in proportion to its probabilities",
-      "Fairer comparison between Hinted and Raw mode",
-      "Jev's odds are hidden by default; tap the eye to reveal them",
-      "New Insights page with real, anonymous statistics, including whether Jev’s probabilities are calibrated (you can opt out)",
-      "Updates now load automatically, no hard refresh needed",
-      "About page: a short Methods section explains exactly how Jev plays"
+      "Insights: small samples are now shown (faded) instead of hidden, so Jev's data appears alongside people's",
+      "Insights: new version filter; by default only each game's current version is counted",
+      "Insights: the human series now counts only games played against Jev",
+      "More accurate statistics: moves made by the stand-in practice bot are no longer counted as Jev's, and an all-in call no longer counts as aggression",
+      "Jev's calibration in Hold'em is now checked on every decision, not only at showdown"
     ],
     "zh": [
-      "Jev 正式上线：每个游戏都能和真实的模型对战",
-      "每次访问随机分配对手模式（Jev 提示 / 直觉）和出招方式（取最高 / 按概率），都可以随时切换",
-      "取最高：Jev 总是出概率最高的那一招；按概率：按它给出的概率按比例抽取出招",
-      "提示模式与直觉模式的对比更公平",
-      "Jev 的概率默认隐藏，点小眼睛即可查看",
-      "新增数据洞察页：真实的匿名统计，包括 Jev 的概率准不准（可选择不参与）",
-      "更新会自动加载，不再需要强制刷新",
-      "关于页新增“方法”部分，说明 Jev 具体是怎么出招的"
+      "数据洞察：样本较少的数据改为浅色显示而不是隐藏，Jev 的数据会和人类的一起出现",
+      "数据洞察：新增版本筛选，默认只统计各游戏的当前版本",
+      "数据洞察：“人类”系列现在只统计和 Jev 对战的对局",
+      "统计更准确：临时顶替的练习机器人的出招不再算作 Jev 的；德州里全下跟注不再算作激进动作",
+      "德州里 Jev 的校准度改为每次决策都核对，不再只在摊牌时核对"
     ]
   }
 }

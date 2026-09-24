@@ -517,6 +517,9 @@ button { font: inherit; color: inherit; }
 .viz-tick, .viz-cat { fill: var(--muted); font-size: 11px; font-family: var(--font); }
 .viz-direct { fill: var(--text); font-size: 11px; font-weight: 600; font-family: var(--font); }
 .viz-bar { transition: opacity .15s; }
+.viz-bar.low { fill-opacity: .38; stroke: currentColor; stroke-width: 1; stroke-dasharray: 3 2; color: var(--muted); }
+.viz-dot.low { fill-opacity: .35; }
+.viz-lownote { font-style: italic; }
 .viz-svg:has(.viz-bar.on) .viz-bar:not(.on) { opacity: .45; }
 .viz-dot { stroke: var(--surface); stroke-width: 2; }
 .viz-cross { stroke: var(--muted); stroke-dasharray: 3 3; stroke-width: 1; }
@@ -526,6 +529,7 @@ button { font: inherit; color: inherit; }
 .ins-cal h2 { font-family: var(--font-display); font-weight: 600; font-size: 22px; margin-bottom: 4px; }
 .ins-cal > p { color: var(--muted); font-size: 14px; max-width: 760px; }
 .viz-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.viz-empty { margin: 6px 0 0; padding: 28px 12px; text-align: center; border: 1px dashed var(--border); border-radius: 10px; font-size: 13px; color: var(--muted); }
 .viz-table-wrap { overflow-x: auto; }
 .viz-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .viz-table th, .viz-table td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }

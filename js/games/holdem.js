@@ -9,7 +9,7 @@ import { choiceAnswer, noulAnswer } from '../engine.js';
 import {
   START_STACK, STREETS, newHand, legalActions, amountFor, applyAction, toCall, potSize, raiseRange, jevOptions,
   potFractionTo, clampTo, recordStats, emptyStats, makePayload, makeRawPayload, summarizeHand, bestFive, botPolicy,
-  rankOf, suitOf, equity,
+  rankOf, suitOf, equity, evaluate,
 } from './holdem-core.js';
 
 const HUMAN = 0, JEV = 1;
@@ -119,7 +119,7 @@ const HAND_NAMES = {
 
 export default {
   id: 'holdem',
-  meta: { icon: '♠︎', accent: '#6366f1', minutes: 8, version: '2.2' },
+  meta: { icon: '♠︎', accent: '#6366f1', minutes: 8, version: '2.3' },
   strings: {
     en: {
       title: 'Heads-up No-Limit Hold’em',
@@ -215,20 +215,22 @@ export default {
     // Jev modes: Jev's odds are sealed during a hand and reviewed when it ends; the review stays
     // up until Jev's first decision of the next hand.
     let reviewing = false;
-    let aheadCal = []; // this hand's Jev 'ahead' judgements: { res, p } (telemetry, emitted at showdown)
+    // Calibration of Jev's 'ahead' judgement is scored at decision time: does Jev's hand beat the
+    // human's actual hand on the current board? (ties skipped). Every decision counts, folds included.
     const endOfHand = () => { if (panel.sealed?.length) { panel.unseal(); reviewing = true; } };
     const revealing = () => hand.done && performance.now() < revealAt;
     // anonymous telemetry: never allowed to break the game
     const track = (fn, ...a) => { try { ctx.track?.[fn]?.(...a); } catch { /* ignore */ } };
-    // One action (call before applyAction): street, action ('allin' when it puts the whole
-    // remaining stack in) and the actor's hand-strength bucket from equity vs a random hand.
+    // One action (call before applyAction): street, action ('allin' when a bet or raise puts the
+    // whole remaining stack in; an all-in call stays 'call', it isn't aggressive) and the actor's
+    // hand-strength bucket from equity vs a random hand.
     function trackMove(p, a, to, res) {
       try {
         const amt = a === 'fold' || a === 'check' ? 0 : amountFor(hand, a, to);
         const e = equity(hand.holes[p], hand.board, 400);
         const ev = {
           ph: STREETS[hand.street],
-          act: amt > 0 && amt >= hand.stacks[p] ? 'allin' : a,
+          act: (a === 'bet' || a === 'raise') && amt > 0 && amt >= hand.stacks[p] ? 'allin' : a,
           x: e < 0.4 ? 'weak' : e < 0.6 ? 'medium' : 'strong',
         };
         if (p === HUMAN) track('human', ev); else track('opp', res, ev);
@@ -278,7 +280,6 @@ export default {
       handNo++;
       born.clear();
       hand = newHand(stacks, button);
-      aheadCal = [];
       busy = false;
       revealAt = 0; plan = null;
       step();
@@ -297,12 +298,6 @@ export default {
           hand.recorded = true;
           stacks = [...hand.stacks];
           over = stacks[HUMAN] === 0 || stacks[JEV] === 0;
-          // Calibration of Jev's 'ahead' judgements: only when the hand reached showdown (ties skipped).
-          try {
-            const r = hand.result;
-            if (r?.showdown && r.winner !== -1) for (const c of aheadCal) track('cal', c.res, { ph: 'ahead', p: c.p, truth: r.winner === JEV });
-          } catch { /* ignore */ }
-          aheadCal = [];
           if (over) track('end', stacks[HUMAN] > 0 ? 'win' : 'lose');
           past.push(summarizeHand(hand, handNo));
           if (past.length > RECENT) past.shift();
@@ -393,7 +388,13 @@ export default {
       });
       recordStats(stats, cur, o.act);
       const pAhead = res.answers?.ahead?.noul;
-      if (typeof pAhead === 'number') aheadCal.push({ res, p: pAhead });
+      if (typeof pAhead === 'number') {
+        try {
+          const mine = evaluate([...cur.holes[JEV], ...cur.board]);
+          const theirs = evaluate([...cur.holes[HUMAN], ...cur.board]);
+          if (mine !== theirs) track('cal', res, { ph: 'ahead', p: pAhead, truth: mine > theirs });
+        } catch { /* ignore */ }
+      }
       trackMove(JEV, o.act, o.to, res);
       applyAction(cur, o.act, o.to);
       step();

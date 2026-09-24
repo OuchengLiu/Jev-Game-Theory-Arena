@@ -37,7 +37,17 @@ function legend(series) {
 }
 
 /** Toggle between chart and table view. */
-function frame({ title, note, series, chart, table, labels }) {
+function frame({ title, note, series, chart, table, labels, empty = false }) {
+  if (empty) {
+    // no data at all: say so instead of drawing bare axes (the table would be all dashes)
+    return h('figure.viz.viz-isempty',
+      h('div.viz-head', h('figcaption', title)),
+      series.length ? legend(series) : null,
+      h('p.viz-empty', labels.empty || '—'),
+      note ? h('p.viz-note', note) : null,
+    );
+  }
+  const hasLow = chart.querySelector?.('.low');
   const body = h('div.viz-body', chart);
   let showingTable = false;
   const btn = h('button.viz-toggle', { type: 'button' }, labels.table);
@@ -48,9 +58,10 @@ function frame({ title, note, series, chart, table, labels }) {
   });
   return h('figure.viz',
     h('div.viz-head', h('figcaption', title), btn),
-    series.length > 1 ? legend(series) : null,
+    series.length ? legend(series) : null, // always name the series, even when only one has data
     body,
     note ? h('p.viz-note', note) : null,
+    hasLow && labels.lowNote ? h('p.viz-note.viz-lownote', labels.lowNote) : null,
   );
 }
 
@@ -68,6 +79,7 @@ const cellText = (d, fmt) => (d && d.n ? `${fmt(d.v)} (n=${d.n})` : '—');
  * cats: [{key,label}], series: [{key,label}], value(cat, series) → {v (0..1), n} | null
  */
 export function groupedBars({ title, note, cats, series, value, labels, fmt = pctFmt, max = 1, height = 220 }) {
+  if (!cats.length || !cats.some((c) => series.some((se) => value(c, se)?.n))) return frame({ title, note, series, labels, empty: true });
   const W = 640, H = height, L = 36, R = 8, T = 12, B = 30;
   const plotW = W - L - R, plotH = H - T - B;
   const groupW = plotW / cats.length;
@@ -90,9 +102,10 @@ export function groupedBars({ title, note, cats, series, value, labels, fmt = pc
       const r = Math.min(4, barW / 2, hgt);
       // rounded data-end, square baseline
       const path = `M${x},${T + plotH} V${top + r} Q${x},${top} ${x + r},${top} H${x + barW - r} Q${x + barW},${top} ${x + barW},${top + r} V${T + plotH} Z`;
-      const bar = s('path', { d: path, fill: `var(--s-${se.key})`, class: 'viz-bar' });
+      const low = d.n < (labels.lowN || 0);
+      const bar = s('path', { d: path, fill: `var(--s-${se.key})`, class: `viz-bar${low ? ' low' : ''}` });
       const hit = s('rect', { x: x - gap / 2, y: T, width: barW + gap, height: plotH, fill: 'transparent', class: 'viz-hit' });
-      const tipHtml = `<b>${esc(se.label)}</b><span>${esc(c.label)}</span><em>${fmt(d.v)}</em><small>n = ${d.n}</small>`;
+      const tipHtml = `<b>${esc(se.label)}</b><span>${esc(c.label)}</span><em>${fmt(d.v)}</em><small>n = ${d.n}${low && labels.low ? ` · ${esc(labels.low)}` : ''}</small>`;
       hit.addEventListener('pointermove', (e) => { bar.classList.add('on'); showTip(e, tipHtml); });
       hit.addEventListener('pointerleave', () => { bar.classList.remove('on'); hideTip(); });
       svg.append(bar, hit);
@@ -108,6 +121,7 @@ export function groupedBars({ title, note, cats, series, value, labels, fmt = pc
  * xs: [{key,label}], series: [{key,label}], value(x, series) → {v, n} | null
  */
 export function lineChart({ title, note, xs, series, value, labels, fmt = pctFmt, max = 1, height = 220, minN = 1, ref = null, refLabel = '' }) {
+  if (!xs.length || !xs.some((xv) => series.some((se) => (value(xv, se)?.n || 0) >= minN))) return frame({ title, note, series, labels, empty: true });
   const W = 640, H = height, L = 36, R = 64, T = 12, B = 28;
   const plotW = W - L - R, plotH = H - T - B;
   const x = (i) => L + (xs.length === 1 ? plotW / 2 : (i / (xs.length - 1)) * plotW);
@@ -131,7 +145,7 @@ export function lineChart({ title, note, xs, series, value, labels, fmt = pctFmt
     pts.forEach((p, i) => { if (!p) return; dAttr += `${dAttr && pts[i - 1] ? 'L' : 'M'}${p[0]},${p[1]} `; });
     if (!dAttr) return;
     svg.append(s('path', { d: dAttr, fill: 'none', stroke: `var(--s-${se.key})`, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
-    pts.forEach((p) => p && svg.append(s('circle', { cx: p[0], cy: p[1], r: 4, fill: `var(--s-${se.key})`, class: 'viz-dot' })));
+    pts.forEach((p) => p && svg.append(s('circle', { cx: p[0], cy: p[1], r: 4, fill: `var(--s-${se.key})`, class: `viz-dot${p[2].n < (labels.lowN || 0) ? ' low' : ''}` })));
     const last = [...pts].reverse().find(Boolean);
     if (last) lastLabels.push({ y: last[1], x: last[0], se });
   });

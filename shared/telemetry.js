@@ -7,7 +7,7 @@
 // Batch (POST /log):
 //   { s: matchId, r: researchOptIn, l: 'en'|'zh', av: appVersion, e: [event, …] }
 // Event:
-//   { g: game, gv: gameVersion, m: 'hinted'|'raw'|'practice',   // opponent mode selected
+//   { g: game, gv: gameVersion, m: 'hinted'|'raw'|'practice',   // opponent mode in effect (practice while the bot stands in for Jev)
 //     pol?: 'greedy'|'sample',                                   // Jev's play policy (Jev modes only)
 //     k: 'move'|'end'|'cal',
 //     a: 'human'|'jev'|'bot',                                    // who acted (move)
