@@ -72,28 +72,15 @@ export async function getStats(env, ctx, cors, ipRaw) {
   }
   if (!env.DB) return new Response(JSON.stringify({ enabled: false, terms: TERMS }), { headers });
   const cache = globalThis.caches?.default;
-  const cacheKey = new Request('https://stats.cache/v4');
+  const cacheKey = new Request('https://stats.cache/v5');
   const hit = cache && await cache.match(cacheKey);
   let body = hit ? await hit.text() : null;
   if (!body) {
     const { results } = await env.DB.prepare(
       'SELECT game, game_ver, mode, policy, actor, model, kind, phase, act, detail, n FROM agg WHERE n > 0').all();
-    // players summary (small table); absent before the players migration has been applied
-    let players = null;
-    try {
-      const row = await env.DB.prepare(
-        "SELECT COUNT(*) AS total, SUM(CASE WHEN days >= 2 THEN 1 ELSE 0 END) AS back_players, " +
-        "SUM(CASE WHEN matches = 0 THEN 1 ELSE 0 END) AS m0, SUM(CASE WHEN matches = 1 THEN 1 ELSE 0 END) AS m1, " +
-        "SUM(CASE WHEN matches = 2 THEN 1 ELSE 0 END) AS m2, SUM(CASE WHEN matches BETWEEN 3 AND 5 THEN 1 ELSE 0 END) AS m3_5, " +
-        "SUM(CASE WHEN matches BETWEEN 6 AND 10 THEN 1 ELSE 0 END) AS m6_10, SUM(CASE WHEN matches > 10 THEN 1 ELSE 0 END) AS m11 " +
-        'FROM players WHERE moves > 0').first();
-      if (row) players = { total: row.total || 0, returning: row.back_players || 0,
-        matches: { '0': row.m0 || 0, '1': row.m1 || 0, '2': row.m2 || 0, '3-5': row.m3_5 || 0, '6-10': row.m6_10 || 0, '11+': row.m11 || 0 } };
-    } catch { /* players table not created yet */ }
     body = JSON.stringify({
       enabled: true,
       terms: TERMS,
-      players,
       updated: new Date().toISOString(),
       cols: ['game', 'game_ver', 'mode', 'policy', 'actor', 'model', 'kind', 'phase', 'act', 'detail', 'n'],
       rows: results.map((r) => [r.game, r.game_ver, r.mode, r.policy, r.actor, r.model, r.kind, r.phase, r.act, r.detail, r.n]),

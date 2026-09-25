@@ -540,9 +540,9 @@ button { font: inherit; color: inherit; }
 .viz-cross { stroke: var(--muted); stroke-dasharray: 3 3; stroke-width: 1; }
 .viz-ref { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .8; }
 .viz-reflabel { fill: var(--muted); font-size: 11px; font-family: var(--font); }
-.ins-cal, .ins-players { margin-bottom: 22px; padding: 22px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
-.ins-cal h2, .ins-players h2 { font-family: var(--font-display); font-weight: 600; font-size: 22px; margin-bottom: 4px; }
-.ins-cal > p, .ins-players > p { color: var(--muted); font-size: 14px; max-width: 760px; }
+.ins-cal { margin-bottom: 22px; padding: 22px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.ins-cal h2 { font-family: var(--font-display); font-weight: 600; font-size: 22px; margin-bottom: 4px; }
+.ins-cal > p { color: var(--muted); font-size: 14px; max-width: 760px; }
 .viz-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
 .viz-empty { margin: 6px 0 0; padding: 28px 12px; text-align: center; border: 1px dashed var(--border); border-radius: 10px; font-size: 13px; color: var(--muted); }
 .viz-table-wrap { overflow-x: auto; }

@@ -34,10 +34,6 @@ registerStrings('ins', {
     ld_note: 'Bluff rate: share of bids that were unlikely to be true given the bidder’s own dice.',
     hd_chart: 'Playing style', hd_aggr: 'Aggression', hd_bluff: 'Bluffs among bets', hd_fold: 'Fold rate',
     hd_note: 'Aggression: bets and raises (including all-in ones) as a share of all actions; calling an all-in is a call. Bluffs: aggressive actions made with a weak hand.',
-    pl_t: 'Players',
-    pl_b: 'Each browser gets an anonymous random number, so we can count players and games per player without knowing who anyone is. Counted since version 1.2.5, across all games and modes.',
-    pl_total: 'Players', pl_back: 'Came back', pl_back_sub: 'played on 2 or more days', pl_none: 'Only browsed', pl_none_sub: 'moved but never finished a game',
-    pl_chart: 'Finished games per player', pl_note: 'Share of players who have finished at least one game.',
     cal_t: 'Is Jev calibrated?',
     cal_b: 'Jev claims its probabilities are calibrated: when it says 70%, it should be right about 70% of the time. Each game asks it a yes/no question we can check afterwards (will you cooperate, are you bluffing, is it ahead, will you stack a field, will its predicted throw be right). The dashed line is perfect calibration.',
     cal_chart: 'Stated probability vs how often it came true',
@@ -77,10 +73,6 @@ registerStrings('ins', {
     ld_note: '诈唬率：按叫点者自己的骰子来看，不太可能成立的叫点所占比例。',
     hd_chart: '打法风格', hd_aggr: '激进度', hd_bluff: '下注中的诈唬比例', hd_fold: '弃牌率',
     hd_note: '激进度：下注和加注（含全下式的下注、加注）占全部动作的比例；跟注对方的全下算跟注。诈唬：拿着弱牌做出的激进动作。',
-    pl_t: '玩家',
-    pl_b: '每个浏览器会有一个匿名的随机编号，用来统计玩家人数和每人局数，我们无法知道任何人是谁。从 1.2.5 版开始统计，涵盖所有游戏和模式。',
-    pl_total: '玩家数', pl_back: '回头玩家', pl_back_sub: '在 2 天或以上玩过', pl_none: '只试了试', pl_none_sub: '出过招但没打完一局',
-    pl_chart: '每位玩家打完的局数', pl_note: '只统计至少打完一局的玩家。',
     cal_t: 'Jev 的概率准吗？',
     cal_b: 'Jev 声称它给出的概率是校准过的：说 70% 的事，应该大约 70% 的时候成真。每个游戏都会问它一个事后能核对的是非题（你会不会合作、你是不是在诈唬、它是否领先、你会不会重兵压一个战场、它预测的出拳是否猜中）。虚线表示完美校准。',
     cal_chart: 'Jev 给出的概率 vs 实际成真的比例',
@@ -120,7 +112,7 @@ async function loadStats() {
     const j = await r.json();
     if (!j.enabled) return null;
     const rows = j.rows.map((a) => Object.fromEntries(j.cols.map((c, i) => [c, a[i]])));
-    return { rows, updated: j.updated, players: j.players || null };
+    return { rows, updated: j.updated };
   } catch { return null; }
 }
 
@@ -185,7 +177,6 @@ function render(data, lang) {
     ...['raw', 'hinted'].map((m) => { const d = winRate(m); return statTile(t('ins.humanWin'), fmtWin(d), t('ins.vs', { opp: oppName(m) })); }),
   ));
 
-  out.push(playersSection(data.players, series, labels));
   out.push(calibrationSection(rows, series, labels));
 
   for (const g of ['holdem', 'liarsdice', 'blotto', 'pd', 'rps', 'ultimatum']) {
@@ -274,24 +265,6 @@ function render(data, lang) {
     ));
   }
   return out;
-}
-
-// Players: counted by an anonymous random id per browser (from v1.2.5 on); all games and modes.
-function playersSection(players, series, labels) {
-  const human = series.filter((se) => se.key === 'human');
-  const total = players?.total || 0;
-  const cats = ['1', '2', '3-5', '6-10', '11+'].map((k) => ({ key: k, label: k }));
-  const finished = cats.reduce((a, c) => a + (players?.matches?.[c.key] || 0), 0);
-  return h('section.ins-players',
-    h('h2', t('ins.pl_t')),
-    h('p', t('ins.pl_b')),
-    h('div.stats.small',
-      statTile(t('ins.pl_total'), total.toLocaleString()),
-      statTile(t('ins.pl_back'), players ? players.returning.toLocaleString() : '—', t('ins.pl_back_sub')),
-      statTile(t('ins.pl_none'), players ? (players.matches?.['0'] || 0).toLocaleString() : '—', t('ins.pl_none_sub'))),
-    h('div.ins-charts', groupedBars({ title: t('ins.pl_chart'), note: t('ins.pl_note'), cats, series: human, labels,
-      value: (c) => (finished ? { v: (players.matches[c.key] || 0) / finished, n: finished } : null) })),
-  );
 }
 
 function calibrationSection(rows, series, labels) {
