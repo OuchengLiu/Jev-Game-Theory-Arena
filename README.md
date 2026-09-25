@@ -5,7 +5,7 @@
 **Play classic game-theory games against Jev, an AI that thinks in probabilities.**
 与用概率思考的 AI 对弈：德州扑克、吹牛骰子、囚徒困境……
 
-### [▶ Play now · 立即开玩](https://ouchengliu.github.io/Jev-Game-Theory-Arena/)
+### [▶ Play now · 立即开玩](https://jev-game-theory-arena.pages.dev/)
 
 Free · No sign-up · English / 中文 · Desktop & mobile
 

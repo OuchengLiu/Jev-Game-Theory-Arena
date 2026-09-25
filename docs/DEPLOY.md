@@ -15,7 +15,7 @@ The browser never sees the API key. Without the proxy, the site still works and 
 
 ### 1. Website
 
-Push the repository to GitHub, then go to **Settings → Pages → Deploy from a branch → `main` / root**.
+Any static host works. This project uses **Cloudflare Pages**: Workers & Pages → Create → Pages → Connect to Git, framework preset *None*, no build command, output directory `/`. Every push to `main` redeploys. (GitHub Pages also works: Settings → Pages → Deploy from a branch → `main` / root.)
 
 ### 2. Proxy
 
@@ -87,7 +87,7 @@ At $0.042 per million input tokens and roughly 400–900 tokens per move, 20,000
 
 ### 1. 网站
 
-把仓库推到 GitHub，然后进入 **Settings → Pages → Deploy from a branch → `main` / root**。
+任何静态托管都可以。本项目使用 **Cloudflare Pages**：Workers & Pages → Create → Pages → Connect to Git，Framework preset 选 *None*，不填构建命令，输出目录填 `/`，之后每次推送到 `main` 都会自动部署。（也可以用 GitHub Pages：Settings → Pages → Deploy from a branch → `main` / root。）
 
 ### 2. 代理
 

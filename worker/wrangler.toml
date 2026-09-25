@@ -4,7 +4,7 @@ compatibility_date = "2026-09-01"
 
 [vars]
 # Comma-separated list of origins allowed to call the proxy (no trailing slash).
-ALLOWED_ORIGINS = "https://ouchengliu.github.io"
+ALLOWED_ORIGINS = "https://jev-game-theory-arena.pages.dev,https://ouchengliu.github.io"
 # For local testing only: temporarily append ",http://localhost:8000" and redeploy, then remove it again.
 # Otherwise anyone running a clone on localhost:8000 would use this Worker.
 # Jev moves allowed per UTC day, site-wide and per visitor.

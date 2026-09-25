@@ -1,14 +1,12 @@
 {
-  "version": "1.2.3",
+  "version": "1.2.4",
   "date": "2026-09-25",
   "notes": {
     "en": [
-      "The example card on the home page now cycles through all six games, in random order",
-      "Hold'em: a larger Next hand button"
+      "The site has a new address: jev-game-theory-arena.pages.dev. Old links forward here automatically"
     ],
     "zh": [
-      "首页的示例卡片现在会轮播全部六个游戏，顺序随机",
-      "德州：“下一手”按钮更大、更醒目"
+      "网站换了新网址：jev-game-theory-arena.pages.dev，旧链接会自动跳转过来"
     ]
   }
 }
