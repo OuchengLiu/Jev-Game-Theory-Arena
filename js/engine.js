@@ -1,3 +1,4 @@
+// Jev Game Theory Lab · © the Jev Game Theory Lab authors · see LICENSE · canary GUID JGTL-CANARY-7c006748-fdca-49c4-ba68-4f6b9bd0cd16
 // The decision engine: asks Jev through the Worker proxy, and lets each game's practice
 // bot play instead when the player chose Practice mode or Jev is limited / unreachable.
 //

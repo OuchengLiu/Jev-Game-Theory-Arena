@@ -1,5 +1,9 @@
 # Deploying your own copy · 部署指南
 
+> **Note:** this project is source-available, not open source. Public deployments of the code require prior written permission from the authors (see [LICENSE](../LICENSE)). This guide documents how the official site is deployed.
+>
+> **注意：** 本项目源码公开但并非开源，公开部署需事先获得作者书面许可（见 [LICENSE](../LICENSE)）。本指南记录的是官方网站的部署方式。
+
 [English](#english) · [中文](#中文)
 
 ## English

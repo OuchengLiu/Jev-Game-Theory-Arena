@@ -16,6 +16,18 @@ const FLUSH_EVERY = 12;
 let queue = [];        // pending events for the current match id
 let matchId = newId();
 
+// Anonymous player id: random, generated in this browser, kept in localStorage so matches can be
+// counted per player (how many players, how many games each, who comes back). Not linked to any
+// identity; a new browser, device or cleared storage simply looks like a new player.
+const PLAYER_KEY = 'jev-gtl-pid';
+function playerId() {
+  try {
+    let id = localStorage.getItem(PLAYER_KEY);
+    if (!/^[a-z0-9]{12,24}$/.test(id || '')) { id = newId(); localStorage.setItem(PLAYER_KEY, id); }
+    return id;
+  } catch { return null; } // storage blocked: send without a player id
+}
+
 function newId() {
   const b = new Uint8Array(10);
   crypto.getRandomValues(b);
@@ -25,7 +37,8 @@ function newId() {
 function flush({ beacon = false } = {}) {
   if (!queue.length) return;
   // one consent covers statistics and possible future research, so every batch that is sent carries it
-  const batch = { s: matchId, r: settings.get('share') !== false, l: settings.get('lang'), av: VERSION, e: queue.splice(0, 60) };
+  const pid = playerId();
+  const batch = { s: matchId, ...(pid ? { p: pid } : {}), r: settings.get('share') !== false, l: settings.get('lang'), av: VERSION, e: queue.splice(0, 60) };
   if (!sharingEnabled()) return;
   const body = JSON.stringify(batch);
   // text/plain keeps this a "simple" CORS request (no preflight), which sendBeacon requires

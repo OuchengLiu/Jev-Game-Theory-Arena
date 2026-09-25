@@ -1,21 +1,90 @@
-MIT License
+Jev Game Theory Lab — Source-Available License
+Copyright (c) 2026 the Jev Game Theory Lab authors. All rights reserved.
 
-Copyright (c) 2026 Jev Arena contributors
+This repository is published so that people can read, learn from and discuss it.
+It is NOT open-source software. All rights not expressly granted below are reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+"The Materials" means everything in this repository and on the Jev Game Theory Lab
+website, including source code, prompt designs, game designs, the experimental design
+(for example the Hinted/Raw opponent modes, the Top pick/By odds move choices and the
+calibration checks), documentation, text, graphics, and all gameplay data and
+statistics collected or published by the project.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. Permitted without asking
+   a. Viewing and reading the Materials, and discussing them publicly.
+   b. Running an unmodified copy locally, for personal, non-commercial evaluation only.
+   c. Playing the games on the official website.
+   d. Referring to or briefly quoting the project, with a citation (see CITATION.cff)
+      and a link to the official repository.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+2. Requires prior written permission from the authors
+   a. Copying, modifying, adapting, translating or redistributing any part of the
+      Materials, or publishing or hosting a derivative work or a public deployment.
+   b. Using any part of the Materials — including the code, prompts, experimental
+      design or data — in research, a thesis, a paper, a preprint, a benchmark,
+      a dataset or any other publication.
+   c. Collecting, scraping, downloading or re-analysing the gameplay data or
+      statistics served by the project (including its /stats endpoint), or
+      redistributing them.
+   d. Training, fine-tuning or evaluating machine-learning models on the Materials.
+   e. Any commercial use.
+
+   To request permission or to collaborate, open an issue in the official repository.
+
+3. Contributions
+   By submitting a contribution (for example a pull request), you agree that it may be
+   used under these terms by the authors.
+
+4. No warranty
+   THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY ARISING FROM THE MATERIALS OR THEIR USE.
+
+5. Earlier versions
+   Versions of this repository published before this license replaced the MIT License
+   remain available under the terms they were published with; this license applies to
+   all later versions and to all collected data.
+
+Jev is a model by TypeSafe AI. This is an unofficial community project, not affiliated
+with TypeSafe AI.
+
+Provenance marker (do not remove): canary GUID JGTL-CANARY-7c006748-fdca-49c4-ba68-4f6b9bd0cd16
+
+---------------------------------------------------------------------------------------
+中文参考译文（如有歧义，以上方英文为准）
+
+Jev 博弈实验室 源码公开许可
+版权所有 (c) 2026 Jev 博弈实验室作者。保留所有权利。
+
+本仓库公开是为了方便大家阅读、学习和交流，它不是开源软件。凡未在下文明确授予的权利，均予以保留。
+
+“本材料”指本仓库和 Jev 博弈实验室网站上的全部内容，包括源代码、提示词设计、游戏设计、
+实验设计（例如提示 / 直觉两种对手模式、取最高 / 按概率两种出招方式、校准度检验）、文档、
+文字、图形，以及本项目收集或公开的全部对局数据和统计结果。
+
+1. 无需申请即可：
+   a. 浏览、阅读本材料，并公开讨论；
+   b. 在本地运行未经修改的副本，仅限个人、非商业的体验；
+   c. 在官方网站上玩游戏；
+   d. 提及或简短引用本项目，并注明出处（见 CITATION.cff）、附上官方仓库链接。
+
+2. 以下行为须事先获得作者书面许可：
+   a. 复制、修改、改编、翻译或再分发本材料的任何部分，或发布、托管衍生作品或公开部署；
+   b. 在研究、学位论文、论文、预印本、基准测试、数据集或其他任何发表物中使用本材料的
+      任何部分，包括代码、提示词、实验设计或数据；
+   c. 收集、抓取、下载或重新分析本项目提供的对局数据或统计结果（包括 /stats 接口），
+      或对其进行再分发；
+   d. 使用本材料训练、微调或评测机器学习模型；
+   e. 任何商业用途。
+
+   如需申请许可或洽谈合作，请在官方仓库提交 issue。
+
+3. 贡献：提交贡献（例如 pull request）即表示你同意作者按本许可的条款使用该贡献。
+
+4. 免责：本材料按“原样”提供，不附带任何形式的保证。作者不对因本材料或其使用
+   而产生的任何索赔、损害或其他责任负责。
+
+5. 早期版本：本许可取代 MIT 协议之前已发布的版本，仍适用其发布时的条款；
+   本许可适用于此后的所有版本以及全部收集的数据。
+
+Jev 是 TypeSafe AI 的模型。本项目为非官方社区项目，与 TypeSafe AI 无关联。

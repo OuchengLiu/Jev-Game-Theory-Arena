@@ -1,3 +1,4 @@
+// Jev Game Theory Lab · © the Jev Game Theory Lab authors · see LICENSE · canary GUID JGTL-CANARY-7c006748-fdca-49c4-ba68-4f6b9bd0cd16
 // Jev Game Theory Lab — Cloudflare Worker proxy.
 //
 // The browser never sees the TypeSafe API key. This Worker:
@@ -55,7 +56,7 @@ export default {
 
     const url = new URL(request.url);
     // public, cached aggregate statistics for the insights page
-    if (request.method === 'GET' && url.pathname === '/stats') return getStats(env, ctx, cors);
+    if (request.method === 'GET' && url.pathname === '/stats') return getStats(env, ctx, cors, request.headers.get('CF-Connecting-IP'));
     if (request.method !== 'POST') return json(405, { error: 'forbidden' });
     if (!['/decide', '/session', '/log'].includes(url.pathname)) return json(404, { error: 'forbidden' });
 

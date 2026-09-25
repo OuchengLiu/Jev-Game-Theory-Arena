@@ -36,8 +36,8 @@ That makes it an interesting game-theory player. After each round you can see it
 
 ### Two ways Jev can play
 
-- **Hinted mode**: the game does the maths first (hand strength, odds, patterns in your play) and gives Jev a short summary. Jev decides with that help.
 - **Raw mode**: Jev sees only what happened (every move so far and the scores) and the options it has. It plays on intuition, so it's often more human and easier to exploit.
+- **Hinted mode**: the game does the maths first (hand strength, odds, patterns in your play) and gives Jev a short summary. Jev decides with that help.
 
 There's also **Practice mode**, where a built-in algorithm plays instead of Jev, with no limits. Switch modes on any game page. Which Jev is harder to beat?
 
@@ -55,11 +55,16 @@ cd Jev-Game-Theory-Arena
 python3 -m http.server 8000      # open http://localhost:8000
 ```
 
-Without a Jev connection, a built-in practice bot plays instead. To connect your own copy to Jev, see **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+Running an unmodified copy locally for personal evaluation is fine; without a Jev connection a built-in practice bot plays instead. Public deployments need permission (see below).
 
-### Contributing
+### License, reuse and citation
 
-Ideas, bug reports and new games are welcome. Please open an issue or a pull request. Each game is one self-contained module; [`js/games/pd.js`](js/games/pd.js) is the simplest example to start from.
+The source is public so people can read it, learn from it and discuss it, but this is **not open-source software**. See [LICENSE](LICENSE):
+
+- ✅ Reading, discussing, playing on the official site, running an unmodified copy locally for personal use, and referring to the project with a citation.
+- ✉️ **Ask first** before copying or modifying the code, redistributing or deploying it, or using any part of it — code, prompts, experimental design or collected data — in research, papers, preprints, benchmarks or datasets.
+
+To ask for permission, report a bug or suggest an idea, please [open an issue](https://github.com/OuchengLiu/Jev-Game-Theory-Arena/issues). Collaboration is welcome. If you refer to the project, please cite it ([CITATION.cff](CITATION.cff)).
 
 ---
 
@@ -84,8 +89,8 @@ Ideas, bug reports and new games are welcome. Please open an issue or a pull req
 
 ### Jev 的两种玩法
 
-- **提示模式**：游戏先把数算好（牌力、概率、你的出招规律），整理成简短的提示交给 Jev，它在这些帮助下做决定。
 - **直觉模式**：Jev 只看到发生过的事（之前的每一步、双方比分）和当前可选的动作，全凭直觉判断。这样往往更像人，也更容易被你抓住破绽。
+- **提示模式**：游戏先把数算好（牌力、概率、你的出招规律），整理成简短的提示交给 Jev，它在这些帮助下做决定。
 
 另外还有**练习模式**：不连接 Jev，由内置算法陪你玩，不限次数。每个游戏页面都可以切换模式。你觉得哪个 Jev 更难对付？
 
@@ -103,17 +108,24 @@ cd Jev-Game-Theory-Arena
 python3 -m http.server 8000      # 然后打开 http://localhost:8000
 ```
 
-没有接入 Jev 时，由内置的练习机器人陪你玩。想让自己部署的版本接入 Jev，请看 **[docs/DEPLOY.md](docs/DEPLOY.md)**。
+在本地运行未经修改的副本、仅供个人体验是可以的；没有接入 Jev 时，由内置的练习机器人陪你玩。公开部署需要事先获得许可（见下文）。
 
-### 参与贡献
+### 许可、复用与引用
 
-欢迎提想法、报 bug 或贡献新游戏，直接开 issue 或提 pull request 就行。每个游戏都是一个独立的模块，最简单的入门例子是 [`js/games/pd.js`](js/games/pd.js)。
+源码公开是为了方便大家阅读、学习和交流，但本项目**不是开源软件**，详见 [LICENSE](LICENSE)：
+
+- ✅ 阅读、讨论、在官方网站上玩、在本地运行未经修改的副本供个人体验，以及注明出处地提及本项目。
+- ✉️ 以下行为请**先征得同意**：复制或修改代码、再分发或部署，以及在研究、论文、预印本、基准测试或数据集中使用本项目的任何部分，包括代码、提示词、实验设计和收集的数据。
+
+申请许可、报告 bug 或提建议，请[提交 issue](https://github.com/OuchengLiu/Jev-Game-Theory-Arena/issues)，也欢迎合作。如果在文章中提及本项目，请注明出处（[CITATION.cff](CITATION.cff)）。
 
 ---
 
 <div align="center">
 
-MIT License · Unofficial community project, not affiliated with TypeSafe AI
-非官方社区项目，与 TypeSafe AI 无关联
+© 2026 Jev Game Theory Lab authors · All rights reserved ([LICENSE](LICENSE)) · Unofficial community project, not affiliated with TypeSafe AI
+保留所有权利 · 非官方社区项目，与 TypeSafe AI 无关联
+
+<sub>canary GUID JGTL-CANARY-7c006748-fdca-49c4-ba68-4f6b9bd0cd16</sub>
 
 </div>

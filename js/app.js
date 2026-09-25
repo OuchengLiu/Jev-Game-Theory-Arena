@@ -1,3 +1,4 @@
+// Jev Game Theory Lab · © the Jev Game Theory Lab authors · see LICENSE · canary GUID JGTL-CANARY-7c006748-fdca-49c4-ba68-4f6b9bd0cd16
 import { t, registerStrings } from './i18n.js';
 import { settings, jevAvailable, effectiveMode } from './settings.js';
 import { h, ThinkPanel, segmented, toast, applyOddsVisibility } from './ui.js';
@@ -181,8 +182,8 @@ function aboutPage() {
       h('h2', t('about.mix.t')), h('p', t('about.mix.b')),
       h('h2', t('about.modes.t')),
       h('div.mode-cards',
-        h('div.mode-card', h('b', t('mode.hinted')), h('p', t('mode.info.hinted'))),
         h('div.mode-card', h('b', t('mode.raw')), h('p', t('mode.info.raw'))),
+        h('div.mode-card', h('b', t('mode.hinted')), h('p', t('mode.info.hinted'))),
         h('div.mode-card', h('b', t('mode.practice')), h('p', t('mode.info.practice'))),
       ),
       h('p.muted', t('mode.info.note')),
@@ -204,8 +205,8 @@ function modeControl() {
   const jev = jevAvailable();
   const pop = h('div.popover', { role: 'dialog', hidden: true },
     h('div.pop-head', h('b', t('mode.info.title')), h('button.icon-btn.sm', { type: 'button', html: icons.close, onclick: () => { pop.hidden = true; } })),
-    h('div.pop-item', h('span.chip', t('mode.hinted')), h('p', t('mode.info.hinted'))),
     h('div.pop-item', h('span.chip', t('mode.raw')), h('p', t('mode.info.raw'))),
+    h('div.pop-item', h('span.chip', t('mode.hinted')), h('p', t('mode.info.hinted'))),
     h('div.pop-item', h('span.chip.chip-muted', t('mode.practice')), h('p', t('mode.info.practice'))),
     h('div.pop-sep'),
     h('div.pop-item', h('span.chip', t('policy.greedy')), h('p', t('policy.info.greedy'))),
@@ -222,8 +223,8 @@ function modeControl() {
   wrap.append(
     h('span.control-label', t('jevmode.label'), info, jev ? h('span.mode-hint', t('mode.hint')) : null),
     segmented([
-      { value: 'hinted', label: t('mode.hinted'), disabled: !jev, title: off },
       { value: 'raw', label: t('mode.raw'), disabled: !jev, title: off },
+      { value: 'hinted', label: t('mode.hinted'), disabled: !jev, title: off },
       { value: 'practice', label: t('mode.practice') },
     ], effectiveMode(), (v) => settings.set('jevMode', v)),
     pop,
@@ -243,7 +244,7 @@ function policyControl() {
   );
 }
 
-const NOTICE_VERSION = 2;
+const NOTICE_VERSION = 3;
 // One-time note about anonymous gameplay statistics (only when they would actually be sent).
 function dataNotice() {
   // NOTICE_VERSION bumps whenever the wording changes materially, so everyone is asked again

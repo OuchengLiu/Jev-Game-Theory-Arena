@@ -37,7 +37,7 @@
   --shadow: 0 1px 2px rgba(22, 21, 15, .04), 0 10px 30px -14px rgba(22, 21, 15, .16);
   --shadow-lg: 0 2px 6px rgba(22, 21, 15, .05), 0 30px 70px -28px rgba(22, 21, 15, .32);
   --brand: #a77b2f;
-  --s-human: #2a78d6; --s-jev-hinted: #eb6834; --s-jev-raw: #1baf7a; --s-bot: #eda100;
+  --s-human: #2a78d6; --s-jev-raw: #eb6834; --s-jev-hinted: #1baf7a; --s-bot: #eda100;
   color-scheme: light;
 }
 [data-theme='dark'] {
@@ -54,7 +54,7 @@
   --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 10px 30px -14px rgba(0, 0, 0, .7);
   --shadow-lg: 0 2px 6px rgba(0, 0, 0, .35), 0 30px 70px -28px rgba(0, 0, 0, .9);
   --brand: #d8b46c;
-  --s-human: #3987e5; --s-jev-hinted: #d95926; --s-jev-raw: #199e70; --s-bot: #c98500;
+  --s-human: #3987e5; --s-jev-raw: #d95926; --s-jev-hinted: #199e70; --s-bot: #c98500;
   color-scheme: dark;
 }
 
@@ -245,7 +245,8 @@ button { font: inherit; color: inherit; }
 .back { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; margin-bottom: 14px; transition: color .2s; }
 .back:hover { color: var(--text); }
 .game-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; margin-bottom: 12px; }
-.gh-title { display: flex; align-items: center; gap: 16px; max-width: 720px; }
+.gh-title { display: flex; align-items: center; gap: 16px; max-width: 720px; flex: 1 1 420px; min-width: 0; }
+.game-head .controls { flex: none; }
 .gh-title h1 { margin: 0 0 2px; }
 .gh-title p { margin: 0; font-size: 14.5px; }
 .title-icon {
@@ -310,7 +311,8 @@ button { font: inherit; color: inherit; }
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 8%, transparent);
 }
-.mode-control .seg button { padding: 8px 18px; }
+.mode-control .seg { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; } /* equal-width options, whatever the label length */
+.mode-control .seg button { padding: 8px 18px; min-width: 76px; text-align: center; }
 .mode-control .seg button:not(.on):not(:disabled):hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .mode-control .seg button.on { background: var(--accent); color: #fff; }
 .policy-control.off { opacity: .45; }
@@ -482,6 +484,7 @@ button { font: inherit; color: inherit; }
   border: 1px dashed color-mix(in srgb, var(--gold) 55%, var(--border));
 }
 .ins-updated { font-size: 13px; margin-bottom: 14px; }
+.ins-terms { margin: 14px 0 0; padding-top: 12px; border-top: 1px dashed var(--border); font-size: 12.5px; color: var(--muted); }
 .ins-filter { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; font-size: 13px; font-weight: 600; }
 .ins-filter small { font-weight: 400; max-width: 560px; }
 .ins-none, .ins-empty { margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; font-size: 13px; color: var(--muted); background: var(--surface-2); }
@@ -525,9 +528,9 @@ button { font: inherit; color: inherit; }
 .viz-cross { stroke: var(--muted); stroke-dasharray: 3 3; stroke-width: 1; }
 .viz-ref { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .8; }
 .viz-reflabel { fill: var(--muted); font-size: 11px; font-family: var(--font); }
-.ins-cal { margin-bottom: 22px; padding: 22px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
-.ins-cal h2 { font-family: var(--font-display); font-weight: 600; font-size: 22px; margin-bottom: 4px; }
-.ins-cal > p { color: var(--muted); font-size: 14px; max-width: 760px; }
+.ins-cal, .ins-players { margin-bottom: 22px; padding: 22px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.ins-cal h2, .ins-players h2 { font-family: var(--font-display); font-weight: 600; font-size: 22px; margin-bottom: 4px; }
+.ins-cal > p, .ins-players > p { color: var(--muted); font-size: 14px; max-width: 760px; }
 .viz-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
 .viz-empty { margin: 6px 0 0; padding: 28px 12px; text-align: center; border: 1px dashed var(--border); border-radius: 10px; font-size: 13px; color: var(--muted); }
 .viz-table-wrap { overflow-x: auto; }

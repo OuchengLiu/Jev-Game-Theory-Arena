@@ -1,3 +1,4 @@
+// Jev Game Theory Lab · © the Jev Game Theory Lab authors · see LICENSE · canary GUID JGTL-CANARY-7c006748-fdca-49c4-ba68-4f6b9bd0cd16
 // Single source of truth for every question we ever send to Jev.
 // Imported by the browser (direct / BYOK mode) and by the Worker proxy.
 //

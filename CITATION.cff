@@ -1,0 +1,17 @@
+# canary GUID JGTL-CANARY-7c006748-fdca-49c4-ba68-4f6b9bd0cd16
+cff-version: 1.2.0
+message: "If you refer to this project, please cite it as below. Reuse of its code, prompts, experimental design or data requires prior permission (see LICENSE)."
+title: "Jev Game Theory Lab: playing classic game-theory games against a System One model"
+type: software
+authors:
+  - name: "Jev Game Theory Lab authors"
+repository-code: "https://github.com/OuchengLiu/Jev-Game-Theory-Arena"
+url: "https://jev-game-theory-arena.pages.dev"
+license-url: "https://github.com/OuchengLiu/Jev-Game-Theory-Arena/blob/main/LICENSE"
+date-released: 2026-09-24
+keywords:
+  - game theory
+  - Jev
+  - System One model
+  - calibration
+  - human-AI interaction

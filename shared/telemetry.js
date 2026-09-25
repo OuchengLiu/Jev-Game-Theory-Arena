@@ -1,3 +1,4 @@
+// Jev Game Theory Lab · © the Jev Game Theory Lab authors · see LICENSE · canary GUID JGTL-CANARY-7c006748-fdca-49c4-ba68-4f6b9bd0cd16
 // Anonymous gameplay telemetry: the event format, shared by the browser and the Worker.
 //
 // Privacy by design: an event says *what happened in a game* ("round 3, human defected"),
@@ -5,7 +6,7 @@
 // link between events is a random per-match id generated in the browser.
 //
 // Batch (POST /log):
-//   { s: matchId, r: researchOptIn, l: 'en'|'zh', av: appVersion, e: [event, …] }
+//   { s: matchId, p?: anonymous player id (random, per browser), r: researchOptIn, l: 'en'|'zh', av: appVersion, e: [event, …] }
 // Event:
 //   { g: game, gv: gameVersion, m: 'hinted'|'raw'|'practice',   // opponent mode in effect (practice while the bot stands in for Jev)
 //     pol?: 'greedy'|'sample',                                   // Jev's play policy (Jev modes only)
@@ -102,7 +103,8 @@ const EVENT = S.obj({
 export function checkBatch(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new SchemaError('batch: not an object');
   const keys = Object.keys(body);
-  for (const k of keys) if (!['s', 'r', 'l', 'av', 'e'].includes(k)) throw new SchemaError(`batch: unexpected field "${k}"`);
+  for (const k of keys) if (!['s', 'p', 'r', 'l', 'av', 'e'].includes(k)) throw new SchemaError(`batch: unexpected field "${k}"`);
+  if (body.p !== undefined && (typeof body.p !== 'string' || !MATCH_ID.test(body.p))) throw new SchemaError('batch.p: invalid');
   if (typeof body.s !== 'string' || !MATCH_ID.test(body.s)) throw new SchemaError('batch.s: invalid');
   if (typeof body.r !== 'boolean') throw new SchemaError('batch.r: invalid');
   if (!['en', 'zh'].includes(body.l)) throw new SchemaError('batch.l: invalid');
@@ -137,5 +139,5 @@ export function checkBatch(body) {
     }
     return clean;
   });
-  return { s: body.s, r: body.r, l: body.l, av: body.av, e: events };
+  return { s: body.s, ...(body.p ? { p: body.p } : {}), r: body.r, l: body.l, av: body.av, e: events };
 }

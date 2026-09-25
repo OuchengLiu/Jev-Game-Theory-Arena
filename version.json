@@ -1,12 +1,12 @@
 {
-  "version": "1.2.4",
+  "version": "1.2.5",
   "date": "2026-09-25",
   "notes": {
     "en": [
-      "The site has a new address: jev-game-theory-arena.pages.dev. Old links forward here automatically"
+      "Interface and text updates"
     ],
     "zh": [
-      "网站换了新网址：jev-game-theory-arena.pages.dev，旧链接会自动跳转过来"
+      "界面与说明文字更新"
     ]
   }
 }

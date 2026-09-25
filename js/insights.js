@@ -34,6 +34,10 @@ registerStrings('ins', {
     ld_note: 'Bluff rate: share of bids that were unlikely to be true given the bidder’s own dice.',
     hd_chart: 'Playing style', hd_aggr: 'Aggression', hd_bluff: 'Bluffs among bets', hd_fold: 'Fold rate',
     hd_note: 'Aggression: bets and raises (including all-in ones) as a share of all actions; calling an all-in is a call. Bluffs: aggressive actions made with a weak hand.',
+    pl_t: 'Players',
+    pl_b: 'Each browser gets an anonymous random number, so we can count players and games per player without knowing who anyone is. Counted since version 1.2.5, across all games and modes.',
+    pl_total: 'Players', pl_back: 'Came back', pl_back_sub: 'played on 2 or more days', pl_none: 'Only browsed', pl_none_sub: 'moved but never finished a game',
+    pl_chart: 'Finished games per player', pl_note: 'Share of players who have finished at least one game.',
     cal_t: 'Is Jev calibrated?',
     cal_b: 'Jev claims its probabilities are calibrated: when it says 70%, it should be right about 70% of the time. Each game asks it a yes/no question we can check afterwards (will you cooperate, are you bluffing, is it ahead, will you stack a field, will its predicted throw be right). The dashed line is perfect calibration.',
     cal_chart: 'Stated probability vs how often it came true',
@@ -45,8 +49,9 @@ registerStrings('ins', {
     pd_retaliate: 'Retaliate', pd_forgive: 'Forgive', pd_unprovoked: 'Unprovoked defection',
     rps_first: 'Round 1: what people throw vs what Jev predicts', rps_first_note: 'Human bars: actual first throws. Jev bars: what Jev predicted the first throw would be.',
     privacy_t: 'Your data, your choice',
-    privacy_b: 'We record moves (for example “round 3: cooperated”), never who made them. There is no IP address, account, device fingerprint or free text, and each match gets a random id that isn’t linked to you. Nothing is ever sold, and only the aggregate charts on this page are published.',
+    privacy_b: 'We record moves (for example “round 3: cooperated”), never who made them. There is no IP address, account, device fingerprint or free text. Each match gets a random id, and each browser a random player number, neither linked to who you are. Nothing is ever sold, and only the aggregate charts on this page are published.',
     share: 'Contribute anonymous gameplay statistics, and agree to their use in possible further analysis and research in the future',
+    terms: 'The statistics on this page are © the Jev Game Theory Lab authors, all rights reserved. You are welcome to view and discuss them; copying, scraping, re-analysing or using them in research or publications requires our permission first (see LICENSE).',
     research: 'Also allow my anonymous data to be used in academic research',
     offline: 'Statistics aren’t available yet.',
   },
@@ -72,6 +77,10 @@ registerStrings('ins', {
     ld_note: '诈唬率：按叫点者自己的骰子来看，不太可能成立的叫点所占比例。',
     hd_chart: '打法风格', hd_aggr: '激进度', hd_bluff: '下注中的诈唬比例', hd_fold: '弃牌率',
     hd_note: '激进度：下注和加注（含全下式的下注、加注）占全部动作的比例；跟注对方的全下算跟注。诈唬：拿着弱牌做出的激进动作。',
+    pl_t: '玩家',
+    pl_b: '每个浏览器会有一个匿名的随机编号，用来统计玩家人数和每人局数，我们无法知道任何人是谁。从 1.2.5 版开始统计，涵盖所有游戏和模式。',
+    pl_total: '玩家数', pl_back: '回头玩家', pl_back_sub: '在 2 天或以上玩过', pl_none: '只试了试', pl_none_sub: '出过招但没打完一局',
+    pl_chart: '每位玩家打完的局数', pl_note: '只统计至少打完一局的玩家。',
     cal_t: 'Jev 的概率准吗？',
     cal_b: 'Jev 声称它给出的概率是校准过的：说 70% 的事，应该大约 70% 的时候成真。每个游戏都会问它一个事后能核对的是非题（你会不会合作、你是不是在诈唬、它是否领先、你会不会重兵压一个战场、它预测的出拳是否猜中）。虚线表示完美校准。',
     cal_chart: 'Jev 给出的概率 vs 实际成真的比例',
@@ -83,14 +92,15 @@ registerStrings('ins', {
     pd_retaliate: '报复', pd_forgive: '原谅', pd_unprovoked: '无故背叛',
     rps_first: '第 1 回合：人类实际出什么 vs Jev 预测你出什么', rps_first_note: '人类的柱子是实际的第一拳，Jev 的柱子是它预测的第一拳。',
     privacy_t: '你的数据，由你决定',
-    privacy_b: '我们只记录出招（例如“第 3 回合：合作”），从不记录是谁出的招：没有 IP、账号、设备指纹或任何自由文本，每局对局只有一个和你无关的随机 ID。数据绝不出售，公开的只有本页的汇总图表。',
+    privacy_b: '我们只记录出招（例如“第 3 回合：合作”），从不记录是谁出的招：没有 IP、账号、设备指纹或任何自由文本。每局对局有一个随机 ID，每个浏览器有一个随机的玩家编号，都和你的身份无关。数据绝不出售，公开的只有本页的汇总图表。',
     share: '贡献匿名对局统计，并同意用于未来可能的进一步分析与研究',
+    terms: '本页统计数据由 Jev 博弈实验室作者保留所有权利。欢迎浏览和讨论；转载、抓取、重新分析或用于研究发表，均需事先征得我们同意（见 LICENSE）。',
     research: '同时允许我的匿名数据用于学术研究',
     offline: '统计数据暂时不可用。',
   },
 }, { game: false });
 
-const SERIES = ['human', 'jev-hinted', 'jev-raw', 'bot'];
+const SERIES = ['human', 'jev-raw', 'jev-hinted', 'bot'];
 const JEV_MODES = ['hinted', 'raw'];
 // Humans: only while playing against Jev (hinted or raw) — humans facing the practice bot are a
 // different condition. Jev: per mode. Practice bot: every bot move (practice mode, and the bot
@@ -110,7 +120,7 @@ async function loadStats() {
     const j = await r.json();
     if (!j.enabled) return null;
     const rows = j.rows.map((a) => Object.fromEntries(j.cols.map((c, i) => [c, a[i]])));
-    return { rows, updated: j.updated };
+    return { rows, updated: j.updated, players: j.players || null };
   } catch { return null; }
 }
 
@@ -172,9 +182,10 @@ function render(data, lang) {
   out.push(h('div.stats',
     statTile(t('ins.matches'), totalMatches.toLocaleString()),
     statTile(t('ins.moves'), totalMoves.toLocaleString()),
-    ...['hinted', 'raw'].map((m) => { const d = winRate(m); return statTile(t('ins.humanWin'), fmtWin(d), t('ins.vs', { opp: oppName(m) })); }),
+    ...['raw', 'hinted'].map((m) => { const d = winRate(m); return statTile(t('ins.humanWin'), fmtWin(d), t('ins.vs', { opp: oppName(m) })); }),
   ));
 
+  out.push(playersSection(data.players, series, labels));
   out.push(calibrationSection(rows, series, labels));
 
   for (const g of ['holdem', 'liarsdice', 'blotto', 'pd', 'rps', 'ultimatum']) {
@@ -250,7 +261,7 @@ function render(data, lang) {
         } }));
     }
 
-    const results = ['hinted', 'raw', 'practice'].map((m) => {
+    const results = ['raw', 'hinted', 'practice'].map((m) => {
       const d = winRate(m, g);
       return d ? h('span.ins-win', h('i', { style: { background: `var(--s-${oppOfMode[m]})` } }), t('ins.vs', { opp: oppName(m) }), h('b', fmtWin(d)), h('small', `n=${d.n}`)) : null;
     });
@@ -263,6 +274,24 @@ function render(data, lang) {
     ));
   }
   return out;
+}
+
+// Players: counted by an anonymous random id per browser (from v1.2.5 on); all games and modes.
+function playersSection(players, series, labels) {
+  const human = series.filter((se) => se.key === 'human');
+  const total = players?.total || 0;
+  const cats = ['1', '2', '3-5', '6-10', '11+'].map((k) => ({ key: k, label: k }));
+  const finished = cats.reduce((a, c) => a + (players?.matches?.[c.key] || 0), 0);
+  return h('section.ins-players',
+    h('h2', t('ins.pl_t')),
+    h('p', t('ins.pl_b')),
+    h('div.stats.small',
+      statTile(t('ins.pl_total'), total.toLocaleString()),
+      statTile(t('ins.pl_back'), players ? players.returning.toLocaleString() : '—', t('ins.pl_back_sub')),
+      statTile(t('ins.pl_none'), players ? (players.matches?.['0'] || 0).toLocaleString() : '—', t('ins.pl_none_sub'))),
+    h('div.ins-charts', groupedBars({ title: t('ins.pl_chart'), note: t('ins.pl_note'), cats, series: human, labels,
+      value: (c) => (finished ? { v: (players.matches[c.key] || 0) / finished, n: finished } : null) })),
+  );
 }
 
 function calibrationSection(rows, series, labels) {
@@ -300,5 +329,6 @@ function privacyCard() {
     h('h2', t('ins.privacy_t')),
     h('p', t('ins.privacy_b')),
     toggle('share', t('ins.share')),
+    h('p.ins-terms', t('ins.terms')),
   );
 }
