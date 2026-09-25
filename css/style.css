@@ -133,7 +133,13 @@ button { font: inherit; color: inherit; }
   .nav .icon-btn[title='GitHub'] { display: none; }
   .brand-text b { font-size: 15px; }
 }
-@media (max-width: 400px) { .brand-text { display: none; } }
+@media (max-width: 400px) {
+  .brand-text { display: none; }
+  .nav { gap: 2px; }
+  .nav-link { padding: 6px 6px; }
+  .lang { margin-left: 2px; }
+  .lang span { padding: 2px 8px; }
+}
 
 /* ---------- layout ---------- */
 .page { max-width: 1200px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px); }
@@ -247,6 +253,12 @@ button { font: inherit; color: inherit; }
 .game-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; margin-bottom: 12px; }
 .gh-title { display: flex; align-items: center; gap: 16px; max-width: 720px; flex: 1 1 420px; min-width: 0; }
 .game-head .controls { flex: none; }
+/* phones: the two control groups stack full-width, and the options share the row equally */
+@media (max-width: 640px) {
+  .game-head .controls { flex: 1 1 100%; flex-direction: column; gap: 10px; }
+  .game-head .controls .control, .game-head .controls .seg { width: 100%; }
+  .mode-control .seg button { min-width: 0; padding: 8px 6px; }
+}
 .gh-title h1 { margin: 0 0 2px; }
 .gh-title p { margin: 0; font-size: 14.5px; }
 .title-icon {
