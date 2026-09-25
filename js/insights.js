@@ -46,7 +46,7 @@ registerStrings('ins', {
     rps_first: 'Round 1: what people throw vs what Jev predicts', rps_first_note: 'Human bars: actual first throws. Jev bars: what Jev predicted the first throw would be.',
     privacy_t: 'Your data, your choice',
     privacy_b: 'We record moves (for example “round 3: cooperated”), never who made them. There is no IP address, account, device fingerprint or free text, and each match gets a random id that isn’t linked to you. Nothing is ever sold, and only the aggregate charts on this page are published.',
-    share: 'Contribute anonymous gameplay statistics',
+    share: 'Contribute anonymous gameplay statistics, and agree to their use in possible further analysis and research in the future',
     research: 'Also allow my anonymous data to be used in academic research',
     offline: 'Statistics aren’t available yet.',
   },
@@ -84,7 +84,7 @@ registerStrings('ins', {
     rps_first: '第 1 回合：人类实际出什么 vs Jev 预测你出什么', rps_first_note: '人类的柱子是实际的第一拳，Jev 的柱子是它预测的第一拳。',
     privacy_t: '你的数据，由你决定',
     privacy_b: '我们只记录出招（例如“第 3 回合：合作”），从不记录是谁出的招：没有 IP、账号、设备指纹或任何自由文本，每局对局只有一个和你无关的随机 ID。数据绝不出售，公开的只有本页的汇总图表。',
-    share: '贡献匿名对局统计',
+    share: '贡献匿名对局统计，并同意用于未来可能的进一步分析与研究',
     research: '同时允许我的匿名数据用于学术研究',
     offline: '统计数据暂时不可用。',
   },
@@ -300,6 +300,5 @@ function privacyCard() {
     h('h2', t('ins.privacy_t')),
     h('p', t('ins.privacy_b')),
     toggle('share', t('ins.share')),
-    toggle('research', t('ins.research')),
   );
 }

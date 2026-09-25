@@ -87,14 +87,28 @@ const HERO_SCENES = [
     q: { en: 'Round 9 of 10. You defected last round after six rounds of cooperation.', zh: '第 9 / 10 回合。连续合作六轮后，你上一轮背叛了。' },
     bars: [['d', { en: 'Defect', zh: '背叛' }, 0.64], ['c', { en: 'Cooperate', zh: '合作' }, 0.36]],
     extra: [{ en: 'You will cooperate', zh: '你会合作' }, 0.41] },
+  { game: 'blotto', accent: '#e11d48',
+    q: { en: 'Round 4 of 7. Your last three splits all left the Fort with 2 soldiers or fewer.', zh: '第 4 / 7 回合。你前三回合的分配，堡垒都只放了 2 名以下的士兵。' },
+    bars: [['a', { en: 'Ridge 4 · Ford 2 · Fort 4', zh: '山脊 4 · 渡口 2 · 堡垒 4' }, 0.41], ['b', { en: 'Ridge 3 · Ford 3 · Fort 4', zh: '山脊 3 · 渡口 3 · 堡垒 4' }, 0.33], ['c', { en: 'Ridge 5 · Ford 3 · Fort 2', zh: '山脊 5 · 渡口 3 · 堡垒 2' }, 0.26]],
+    extra: [{ en: 'You will stack one field', zh: '你会重兵压一个战场' }, 0.62] },
+  { game: 'rps', accent: '#ec4899',
+    q: { en: 'Round 6. You have thrown rock after every loss so far.', zh: '第 6 回合。到目前为止，你每次输了之后都出石头。' },
+    bars: [['r', { en: 'You throw rock', zh: '你出石头' }, 0.61], ['p', { en: 'You throw paper', zh: '你出布' }, 0.24], ['s', { en: 'You throw scissors', zh: '你出剪刀' }, 0.15]],
+    extra: [{ en: 'Your play has a pattern', zh: '你的出拳有规律' }, 0.73] },
+  { game: 'ultimatum', accent: '#0ea5e9',
+    q: { en: 'Round 5 of 8. You offer Jev 2 of 10 coins; earlier you rejected an offer of 3.', zh: '第 5 / 8 回合。你分给 Jev 10 枚里的 2 枚；之前你拒绝过 3 枚的提议。' },
+    bars: [['rej', { en: 'Reject', zh: '拒绝' }, 0.57], ['acc', { en: 'Accept', zh: '接受' }, 0.43]],
+    extra: [{ en: 'The offer is fair', zh: '这个提议公平' }, 0.12] },
 ];
+// The rotating example card cycles through all six games in a fresh random order each visit.
+const HERO_ORDER = (() => { const a = [...HERO_SCENES]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; })();
 
 function heroVisual() {
   const lang = settings.get('lang');
   const card = h('div.hero-card');
   let i = 0;
   const paint = () => {
-    const s = HERO_SCENES[i % HERO_SCENES.length];
+    const s = HERO_ORDER[i % HERO_ORDER.length];
     card.style.setProperty('--accent', s.accent);
     const g = GAMES.find((x) => x.id === s.game);
     card.replaceChildren(
@@ -108,7 +122,7 @@ function heroVisual() {
         h('div.bar-track', h('div.bar-fill', { style: { width: `${p * 100}%` } })),
         h('div.bar-val', `${Math.round(p * 100)}%`)))),
       h('div.hc-foot', h('span', s.extra[0][lang]), h('div.mini-track', h('div.mini-fill', { style: { width: `${s.extra[1] * 100}%` } })), h('b', `${Math.round(s.extra[1] * 100)}%`)),
-      h('div.hc-dots', HERO_SCENES.map((_, j) => h('span', { class: j === i % HERO_SCENES.length ? 'on' : '' }))),
+      h('div.hc-dots', HERO_ORDER.map((_, j) => h('span', { class: j === i % HERO_ORDER.length ? 'on' : '' }))),
     );
     requestAnimationFrame(() => requestAnimationFrame(() => card.querySelectorAll('.bar-fill, .mini-fill').forEach((b) => b.classList.add('in'))));
     i++;
@@ -229,15 +243,17 @@ function policyControl() {
   );
 }
 
+const NOTICE_VERSION = 2;
 // One-time note about anonymous gameplay statistics (only when they would actually be sent).
 function dataNotice() {
-  if (settings.get('noticeSeen') || !sharingEnabled()) return null;
+  // NOTICE_VERSION bumps whenever the wording changes materially, so everyone is asked again
+  if (settings.get('noticeSeen') === NOTICE_VERSION || !sharingEnabled()) return null;
   return h('div.data-note', { role: 'note' },
     svgEl(icons.shield),
     h('p', t('notice.text'), ' ', h('a.link', { href: '#/insights' }, t('notice.more'))),
     h('div.data-note-actions',
-      h('button.btn.ghost.sm', { type: 'button', onclick: () => { settings.set('share', false); settings.set('noticeSeen', true); } }, t('notice.optout')),
-      h('button.btn.sm', { type: 'button', onclick: () => settings.set('noticeSeen', true) }, t('notice.ok'))),
+      h('button.btn.ghost.sm', { type: 'button', onclick: () => { settings.set('share', false); settings.set('noticeSeen', NOTICE_VERSION); } }, t('notice.optout')),
+      h('button.btn.sm', { type: 'button', onclick: () => settings.set('noticeSeen', NOTICE_VERSION) }, t('notice.ok'))),
   );
 }
 

@@ -24,7 +24,8 @@ function newId() {
 
 function flush({ beacon = false } = {}) {
   if (!queue.length) return;
-  const batch = { s: matchId, r: settings.get('research') === true, l: settings.get('lang'), av: VERSION, e: queue.splice(0, 60) };
+  // one consent covers statistics and possible future research, so every batch that is sent carries it
+  const batch = { s: matchId, r: settings.get('share') !== false, l: settings.get('lang'), av: VERSION, e: queue.splice(0, 60) };
   if (!sharingEnabled()) return;
   const body = JSON.stringify(batch);
   // text/plain keeps this a "simple" CORS request (no preflight), which sendBeacon requires

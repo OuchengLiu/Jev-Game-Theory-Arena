@@ -606,6 +606,8 @@
   transition: transform .15s, box-shadow .2s, background .2s, border-color .2s, opacity .2s;
 }
 .hd-act:hover:not(:disabled) { transform: translateY(-1px); }
+/* Next hand / New game: the one button on screen, so make it prominent */
+.hd-act.hd-act-next { min-width: 220px; height: 54px; padding: 0 32px; font-size: 16.5px; }
 .hd-act:active:not(:disabled) { transform: translateY(0) scale(.98); }
 .hd-act:disabled { cursor: default; }
 .hd-act-n {

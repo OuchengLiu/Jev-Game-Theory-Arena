@@ -599,21 +599,21 @@ export default {
       if (revealing()) {
         return h('div.hd-bar',
           h('p.hd-say.hd-wait', T('runout'), h('span.hd-dots', h('i'), h('i'), h('i'))),
-          h('div.hd-btns', h('button.hd-act.hd-ghost', { type: 'button', disabled: true, 'aria-hidden': 'true', tabindex: '-1' }, T('nextHand'))),
+          h('div.hd-btns', h('button.hd-act.hd-ghost.hd-act-next', { type: 'button', disabled: true, 'aria-hidden': 'true', tabindex: '-1' }, T('nextHand'))),
         );
       }
       if (over) {
         const won = stacks[HUMAN] > 0;
         return h('div.hd-bar.hd-bar-over',
           h('div.hd-over', h('h2', t(won ? 'result.win' : 'result.lose')), h('p.muted', T(won ? 'bustJev' : 'bustYou', { n: handNo }))),
-          h('button.hd-act.hd-act-gold', { type: 'button', onclick: reset }, t('new.game')),
+          h('button.hd-act.hd-act-gold.hd-act-next', { type: 'button', onclick: reset }, t('new.game')),
         );
       }
       if (hand.done) {
         const r = hand.result;
         return h('div.hd-bar',
           h('p.hd-say', { class: r.winner === HUMAN ? 'hd-good' : r.winner === JEV ? 'hd-bad' : '' }, resultText()),
-          h('div.hd-btns', h('button.hd-act.hd-act-gold', { type: 'button', onclick: nextHand }, T('nextHand'))),
+          h('div.hd-btns', h('button.hd-act.hd-act-gold.hd-act-next', { type: 'button', onclick: nextHand }, T('nextHand'))),
         );
       }
       if (hand.toAct === JEV) {
