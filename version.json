@@ -1,12 +1,12 @@
 {
-  "version": "1.2.6",
-  "date": "2026-09-25",
+  "version": "1.2.7",
+  "date": "2026-09-26",
   "notes": {
     "en": [
-      "Better layout on phones"
+      "Small updates"
     ],
     "zh": [
-      "手机端显示优化"
+      "细节更新"
     ]
   }
 }

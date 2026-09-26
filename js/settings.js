@@ -20,8 +20,8 @@ const defaults = {
 };
 
 let state = { ...defaults, ...safeParse(storageGet(KEY)) };
-// The opponent mode is per visit: each time the site is opened, Hinted or Raw is assigned at
-// random (50/50) so both get played equally; a player's own switch lasts for that visit (tab).
+// The opponent mode is per visit: each time the site is opened, Raw or Hinted is assigned at
+// random (weighted by HINTED_SHARE); a player's own switch lasts for that visit (tab).
 // The play policy is randomised independently: 'greedy' (always Jev's top-rated move) or
 // 'sample' (a move drawn in proportion to Jev's probabilities), weighted by GREEDY_SHARE.
 const SESSION_MODE = 'jev-gtl-mode';
@@ -33,7 +33,9 @@ const perVisit = (key, allowed, pick) => {
   try { sessionStorage.setItem(key, v); } catch { /* ignore */ }
   return v;
 };
-state.jevMode = perVisit(SESSION_MODE, MODES, () => (Math.random() < 0.5 ? 'hinted' : 'raw'));
+// Share of visits that get 'hinted' mode; the rest get 'raw'.
+export const HINTED_SHARE = 0.25;
+state.jevMode = perVisit(SESSION_MODE, MODES, () => (Math.random() < HINTED_SHARE ? 'hinted' : 'raw'));
 // Share of visits that get 'greedy' (Top pick); the rest get 'sample' (By odds).
 export const GREEDY_SHARE = 0.75;
 state.policy = perVisit(SESSION_POLICY, POLICIES, () => (Math.random() < GREEDY_SHARE ? 'greedy' : 'sample'));
