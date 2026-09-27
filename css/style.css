@@ -288,6 +288,14 @@ button { font: inherit; color: inherit; }
 .pop-item { margin-bottom: 12px; }
 .pop-item p { margin: 6px 0 0; font-size: 13.5px; color: var(--muted); line-height: 1.55; }
 .pop-note { margin: 0; padding-top: 12px; border-top: 1px dashed var(--border); font-size: 12.5px; color: var(--muted); }
+.confirm {
+  width: min(420px, calc(100vw - 32px)); padding: 22px; border-radius: 20px; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-lg);
+}
+.confirm::backdrop { background: rgba(0, 0, 0, .35); backdrop-filter: blur(2px); }
+.confirm h3 { margin: 0 0 8px; font-size: 18px; }
+.confirm p { margin: 0 0 18px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 @media (max-width: 640px) { .popover { left: 0; right: auto; } }
 
 .game-sub { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }

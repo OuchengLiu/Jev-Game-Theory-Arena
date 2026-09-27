@@ -226,10 +226,27 @@ function modeControl() {
       { value: 'raw', label: t('mode.raw'), disabled: !jev, title: off },
       { value: 'hinted', label: t('mode.hinted'), disabled: !jev, title: off },
       { value: 'practice', label: t('mode.practice') },
-    ], effectiveMode(), (v) => settings.set('jevMode', v)),
+    ], effectiveMode(), (v) => switchOpponent('jevMode', v)),
     pop,
   );
   return wrap;
+}
+
+// Switching the opponent mode or move choice mid-match would mix two opponents in one match,
+// so it starts a new match, after the player confirms. Before any move it just switches.
+function switchOpponent(key, v) {
+  if (settings.get(key) === v) return;
+  const apply = () => { if (current) current.restart = current.moves > 0; settings.set(key, v); };
+  if (!current?.moves) { apply(); return; }
+  const dlg = h('dialog.confirm', { 'aria-labelledby': 'confirm-t' },
+    h('h3#confirm-t', t('switch.t')),
+    h('p', t('switch.b')),
+    h('div.confirm-actions',
+      h('button.btn.ghost.sm', { type: 'button', onclick: () => dlg.close() }, t('switch.cancel')),
+      h('button.btn.sm', { type: 'button', onclick: () => { dlg.close(); apply(); } }, t('switch.ok'))));
+  dlg.addEventListener('close', () => dlg.remove());
+  document.body.append(dlg);
+  dlg.showModal();
 }
 
 // Play policy: how a move is picked from Jev's probabilities (Jev modes only).
@@ -240,7 +257,7 @@ function policyControl() {
     segmented([
       { value: 'greedy', label: t('policy.greedy'), disabled: !jevOn },
       { value: 'sample', label: t('policy.sample'), disabled: !jevOn },
-    ], settings.get('policy'), (v) => settings.set('policy', v)),
+    ], settings.get('policy'), (v) => switchOpponent('policy', v)),
   );
 }
 
@@ -330,8 +347,17 @@ function gamePage(game) {
     footer(),
   );
   page.cleanup = () => { mode.cleanup(); banner.cleanup(); };
-  const track = createTracker(game.id, game.meta.version || '1.0');
-  const ctx = { t, h, panel, decide, pickAction, choiceAnswer, noulAnswer, normalize, toast, settings, track };
+  const tracker = createTracker(game.id, game.meta.version || '1.0');
+  // moves made in the current match (reset on a new match / match end), for switchOpponent()
+  const count = (d) => { if (current?.game === game) current.moves = d == null ? 0 : current.moves + d; };
+  const track = {
+    ...tracker,
+    start: () => { count(null); tracker.start(); },
+    human: (...a) => { count(1); tracker.human(...a); },
+    end: (...a) => { count(null); tracker.end(...a); },
+  };
+  // a request to Jev (or the bot) counts as soon as it is sent, so a switch while it is thinking is caught
+  const ctx = { t, h, panel, decide: (...a) => { count(1); return decide(...a); }, pickAction, choiceAnswer, noulAnswer, normalize, toast, settings, track };
   const instance = game.mount(board, ctx);
   return { page, instance, panel };
 }
@@ -343,19 +369,21 @@ function route() {
   const game = m && GAMES.find((g) => g.id === m[1]);
 
   // Keep a running game alive across language / setting changes.
-  if (game && current?.game === game) {
+  if (game && current?.game === game && !current.restart) {
     rebuildGameChrome(game);
     return;
   }
+  const restart = Boolean(game && current?.game === game);
   current?.page?.cleanup?.();
   current?.instance?.destroy?.();
   current = null;
-  window.scrollTo(0, 0);
+  if (!restart) window.scrollTo(0, 0);
 
   let page;
   if (game) {
+    current = { game, moves: 0 }; // set before mount so the tracker can count this match's moves
     const built = gamePage(game);
-    current = { game, ...built };
+    Object.assign(current, built);
     page = built.page;
   } else if (hash.startsWith('#/about')) page = aboutPage();
   else if (hash.startsWith('#/insights')) page = insightsPage(footer);
@@ -371,7 +399,7 @@ function rebuildGameChrome(game) {
   const built = gamePage({ ...game, mount: () => instance });
   built.page.querySelector('.board').replaceWith(boardEl);
   built.page.querySelector('.think').replaceWith(panel.el);
-  current = { game, instance, panel, page: built.page };
+  Object.assign(current, { page: built.page });
   app.replaceChildren(header(), built.page);
   instance.render?.();
   panel.rerender?.();

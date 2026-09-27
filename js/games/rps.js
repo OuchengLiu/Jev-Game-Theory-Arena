@@ -1,6 +1,6 @@
 // Rock-Paper-Scissors: "Predict the human". Jev judges, code acts:
-// Jev only predicts your next throw; code turns the prediction into a counter-strategy
-// blended with the Nash equilibrium (1/3 each), leaning on Nash when the read is weak.
+// Jev only predicts your next throw; code plays the hand that beats the prediction
+// (Top pick: the counter to Jev's top prediction; By odds: sampled from the prediction).
 
 import { choiceAnswer, noulAnswer, normalize } from '../engine.js';
 import { THROWS, COUNTER, outcomeOf, analyze, applyRel, COND } from '../../shared/games/rps.js';
@@ -9,26 +9,15 @@ const TOTAL = 20;
 const KEYS = { 1: 'rock', 2: 'paper', 3: 'scissors', r: 'rock', p: 'paper', s: 'scissors' };
 
 /**
- * Turn a prediction of the human's throw into Jev's own mixed strategy.
- * Exploit weight w grows with how lopsided the prediction is, the "patterned" judgement,
- * Jev's confidence and the amount of history; the rest is uniform (Nash) noise.
+ * Turn Jev's prediction of the human's throw into Jev's own throw distribution: each predicted
+ * throw's probability goes to the hand that beats it. No code-side mixing: under Top pick Jev
+ * always plays the counter to its top prediction; under By odds it samples from the prediction.
  */
-// Exploitation is capped (≤ 60% on the counter) and backs off towards the 1/3 Nash mix when
-// the human has been winning lately: an over-confident exploiter is itself easy to exploit.
-export function jevStrategy(predict, patterned, n, history = []) {
+export function jevStrategy(predict) {
   const pred = normalize(Object.fromEntries(THROWS.map((x) => [x, predict?.probabilities?.[x] ?? 0])));
-  const edge = Math.max(...THROWS.map((x) => pred[x])) - 1 / 3; // 0 … 2/3
-  const lean = Math.min(1, edge * 3);
-  const pat = typeof patterned === 'number' ? patterned : lean;
-  const conf = typeof predict?.confidence === 'number' ? Math.min(1, predict.confidence * 3) : 0.5;
-  const warm = Math.min(1, n / 4);
-  const recent = history.slice(-6);
-  const edgeAgainst = recent.filter((r) => r.outcome === 'human_won').length - recent.filter((r) => r.outcome === 'jev_won').length;
-  const backoff = Math.max(0, 1 - Math.max(0, edgeAgainst) / 3); // human +3 over the last 6 → pure Nash
-  const w = Math.min(0.6, (0.2 + 0.7 * (0.5 * lean + 0.5 * pat)) * (0.6 + 0.4 * conf) * (0.4 + 0.6 * warm)) * backoff;
-  const mix = Object.fromEntries(THROWS.map((x) => [x, (1 - w) / 3]));
-  for (const x of THROWS) mix[COUNTER[x]] += w * pred[x];
-  return { pred, mix, w };
+  const mix = Object.fromEntries(THROWS.map((x) => [x, 0]));
+  for (const x of THROWS) mix[COUNTER[x]] += pred[x];
+  return { pred, mix };
 }
 
 // Practice bot (automatic fallback when Jev is unreachable):
@@ -94,13 +83,13 @@ const P = (pt) => `${pt[0].toFixed(1)},${pt[1].toFixed(1)}`;
 
 export default {
   id: 'rps',
-  meta: { icon: 'hand', accent: '#ec4899', minutes: 2, version: '1.4' },
+  meta: { icon: 'hand', accent: '#ec4899', minutes: 2, version: '1.5' },
   strings: {
     en: {
       title: 'Rock · Paper · Scissors',
       tagline: 'Twenty throws. Jev doesn’t choose a hand. It predicts yours, and the code plays whatever beats it.',
       concept: 'Mixed-strategy Nash equilibrium',
-      rules: 'Rock beats scissors, scissors beats paper, paper beats rock. 20 rounds; most round wins takes the match. Each round Jev predicts your next throw and leans towards the counter (never more than 60%), falling back towards pure randomness when you have been winning. Throwing each hand exactly 1/3 of the time at random is the Nash equilibrium: nobody can beat it on average. Any pattern you fall into can be exploited. Keys: 1 / 2 / 3.',
+      rules: 'Rock beats scissors, scissors beats paper, paper beats rock. 20 rounds; most round wins takes the match. Each round Jev predicts your next throw and plays the hand that beats it. Throwing each hand exactly 1/3 of the time at random is the Nash equilibrium: nobody can beat it on average. Any pattern you fall into can be exploited. Keys: 1 / 2 / 3.',
       rock: 'Rock', paper: 'Paper', scissors: 'Scissors',
       choose: 'Round {n}: make your throw',
       shoot: 'Rock… paper… scissors…',
@@ -113,7 +102,6 @@ export default {
       noRead: 'Jev had no clear read on you yet',
       q: 'Jev thinks you’ll throw…',
       patterned: 'Pattern spotted',
-      exploit: 'Exploiting (vs. random)',
       plays: 'Jev plays {x}',
       history: 'History',
       final: 'Round wins {a} : {b} · {d} draws',
@@ -134,7 +122,7 @@ export default {
       title: '石头剪刀布',
       tagline: '二十把。Jev 不直接出拳，而是预测你会出什么，再由代码出克制你的那一手。',
       concept: '混合策略纳什均衡',
-      rules: '石头赢剪刀，剪刀赢布，布赢石头。共 20 回合，赢的回合多者胜。每回合 Jev 先预测你要出什么，再偏向出克制它的那一手（最多 60%）；如果你最近赢得多，它会退回到更随机的打法。三种手势各以 1/3 的概率随机出，就是纳什均衡：长期来看谁也赢不了你。只要你出拳有规律，就可能被利用。快捷键：1 / 2 / 3。',
+      rules: '石头赢剪刀，剪刀赢布，布赢石头。共 20 回合，赢的回合多者胜。每回合 Jev 先预测你要出什么，再出克制它的那一手。三种手势各以 1/3 的概率随机出，就是纳什均衡：长期来看谁也赢不了你。只要你出拳有规律，就可能被利用。快捷键：1 / 2 / 3。',
       rock: '石头', paper: '布', scissors: '剪刀',
       choose: '第 {n} 回合，请出拳',
       shoot: '石头……剪刀……布……',
@@ -147,7 +135,6 @@ export default {
       noRead: 'Jev 暂时还看不透你',
       q: 'Jev 猜你会出……',
       patterned: '看出规律',
-      exploit: '针对性出招（相对随机）',
       plays: 'Jev 出{x}',
       history: '历史',
       final: '回合胜负 {a} : {b} · 平局 {d} 次',
@@ -201,10 +188,13 @@ export default {
       const res = await ctx.decide('rps', () => payload, localBot);
       if (!alive) return;
       const patterned = res.answers?.patterned?.noul;
-      const { pred, mix, w } = jevStrategy(res.answers?.predict, patterned, history.length, history);
+      const { pred, mix } = jevStrategy(res.answers?.predict);
       const top = THROWS.reduce((a, b) => (pred[b] > pred[a] ? b : a));
       const guess = pred[top] - Math.min(...THROWS.map((x) => pred[x])) >= 0.03 ? top : null; // null: no real read
-      const jev = ctx.pickAction(choiceAnswer(mix), THROWS);
+      // Top pick → the counter to Jev's top prediction; By odds (and the practice bot) → sampled
+      const act = choiceAnswer(mix);
+      if (res.answers?.predict?.greedy) Object.defineProperty(act, 'greedy', { value: true });
+      const jev = ctx.pickAction(act, THROWS);
       const outcome = outcomeOf(human, jev);
       prevPoint = preds.length ? bary(preds[preds.length - 1]) : bary({ rock: 1 / 3, paper: 1 / 3, scissors: 1 / 3 });
       history.push({ human, jev, outcome });
@@ -225,7 +215,6 @@ export default {
         title: () => t('rps.q'),
         extras: () => [
           { label: t('rps.patterned'), value: patterned },
-          { label: t('rps.exploit'), value: w },
           ...THROWS.map((x) => ({ label: t('rps.plays', { x: name(x) }), value: mix[x] })),
         ],
       });
