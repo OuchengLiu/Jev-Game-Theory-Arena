@@ -1,16 +1,16 @@
 {
-  "version": "2.0.2",
+  "version": "2.0.3",
   "date": "2026-10-03",
   "notes": {
     "zh": [
-      "当前版本纳入已核实的玩法兼容历史，并保留原版本标识。",
-      "新增常规 / 泛化对比，按分析模式、出招策略和实际模型版本隔离。",
-      "新增完整局数、匿名玩家数、胜率、平局率及双方平均收益；统一沿用原版图表样式。"
+      "补回已核实兼容的常规练习机器人历史，全部版本继续保留其他练习记录。",
+      "数据洞察手机按钮等宽、可换行，触控区域至少44像素。",
+      "对比模式明确显示固定版本，返回浏览时保留原版本选择。"
     ],
     "en": [
-      "Current gameplay includes audited compatible history with original version labels preserved.",
-      "Compare standard and variant rules by assistance, policy and actual model release.",
-      "Show completed matches, distinct anonymous players, outcome rates and mean payoffs in the original chart style."
+      "Restore audited compatible practice-bot history; All versions retains other practice records.",
+      "Mobile insights controls use equal-width options, wrapping labels and 44px touch targets.",
+      "Comparison shows its fixed version clearly and preserves the previous overview selection."
     ]
   }
 }

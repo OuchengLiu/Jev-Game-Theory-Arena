@@ -2,8 +2,8 @@
 // Gameplay compatibility only: standard payoffs/actions/information remain unchanged.
 // Prompt wording and model releases can differ; never use these rows as v2 controls.
 export const LEGACY_GAMEPLAY = {
-  pd: {current:'2.0',legacy:['1.4'],modes:['raw','hinted']},
-  ultimatum: {current:'2.0',legacy:['1.4'],modes:['raw','hinted']},
+  pd: {current:'2.0',legacy:['1.4'],modes:['raw','hinted','practice']},
+  ultimatum: {current:'2.0',legacy:['1.4'],modes:['raw','hinted','practice']},
   blotto: {current:'2.1',legacy:['1.4'],modes:['raw']},
 };
 export const versionKey=v=>String(v || '').split('.').map(Number).concat([0,0,0]).slice(0,3).join('.');

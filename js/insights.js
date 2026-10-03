@@ -138,13 +138,17 @@ export function insightsPage(footer, games = []) {
     const comparing=variant==='compare';
     const rows=comparing?[]:insightRows(data,{variant,version,policy,currentVersions});
     const legacyMatches=rows.filter(r=>r.experiment==='1' && r.kind==='end').reduce((s,r)=>s+r.n,0);
-    const group=(label,values,current,change)=>h('div.control',
-      h('span.control-label',label),segmented(values,current,v=>{change(v);draw(data);}));
+    const group=(label,values,current,change)=>{
+      const buttons=segmented(values,current,v=>{change(v);draw(data);});
+      buttons.setAttribute('role','group');buttons.setAttribute('aria-label',label);
+      [...buttons.children].forEach((button,i)=>button.setAttribute('aria-pressed',String(values[i].value===current)));
+      return h('div.control',h('span.control-label',label),buttons);
+    };
     body.replaceChildren(
       h('div.ins-filter.ins-filter-bar',
-        group(t('ins.version'),[{value:'latest',label:t('ins.v_latest'),disabled:comparing},{value:'all',label:t('ins.v_all'),disabled:comparing}],version,v=>version=v),
+        comparing?h('div.control.ins-version-fixed',h('span.control-label',t('ins.version')),h('span.badge',t('ins.v_latest')),h('small.muted',lang==='zh'?'对比仅使用当前实验':'Compare uses the current experiment')):group(t('ins.version'),[{value:'latest',label:t('ins.v_latest')},{value:'all',label:t('ins.v_all')}],version,v=>version=v),
         group(t('policy.label'),[{value:'greedy',label:t('policy.greedy')},{value:'sample',label:t('policy.sample')}],policy,v=>policy=v),
-        group(t('experiment.rules'),[{value:'standard',label:t('experiment.standard')},{value:'generalization',label:t('experiment.generalization')},{value:'compare',label:lang==='zh'?'对比':'Compare'}],variant,v=>{variant=v;if(v==='compare')version='latest';}),
+        group(t('experiment.rules'),[{value:'standard',label:t('experiment.standard')},{value:'generalization',label:t('experiment.generalization')},{value:'compare',label:lang==='zh'?'对比':'Compare'}],variant,v=>variant=v),
         comparing?group(lang==='zh'?'分析模式':'Assistance',[{value:'raw',label:t('mode.raw')},{value:'hinted',label:t('mode.hinted')}],assistance,v=>assistance=v):null),
       !comparing?h('p.ins-filter-note.muted',t(version==='latest'?'ins.v_latest_note':'ins.v_all_note'),version==='latest'&&legacyMatches? (lang==='zh'?` 已纳入 ${legacyMatches} 局玩法兼容历史；原版本标识保留。`:` Includes ${legacyMatches} gameplay-compatible historical matches with original version labels retained.`):''):null,
       ...(comparing?comparisonView(data,lang,{mode:assistance,policy,currentVersions}):render({...data,rows,variant},lang)));
@@ -179,6 +183,11 @@ function render(data, lang) {
     ...['raw', 'hinted'].map((m) => { const d = winRate(m); return statTile(t('ins.humanWin'), fmtWin(d), t('ins.vs', { opp: oppName(m) })); }),
   ));
 
+  const practiceMatches=sum(r=>r.kind==='end' && r.mode==='practice');
+  const botMoves=sum(r=>r.kind==='move' && r.actor==='bot');
+  if(practiceMatches || botMoves)out.push(h('p.ins-filter-note.muted',lang==='zh'
+    ? `包含练习对局 ${practiceMatches} 局、机器人出招 ${botMoves} 次；图表以“练习机器人”单独展示，不进入模型对比。`
+    : `Includes ${practiceMatches} practice matches and ${botMoves} bot moves. Practice bot charts remain separate and are excluded from model comparisons.`));
   out.push(calibrationSection(rows, series, labels));
 
   for (const g of ['holdem', 'liarsdice', 'blotto', 'pd', 'rps', 'ultimatum']) {

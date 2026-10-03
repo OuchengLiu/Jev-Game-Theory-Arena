@@ -88,10 +88,13 @@ assert.equal(document.querySelector('.ins-body .stats .stat b').textContent,'7',
 assert.ok(document.querySelector('.ins-compare-pair'));
 assert.equal(document.querySelectorAll('.ins-body .ins-game').length,6);
 assert.ok(document.querySelector('.ins-body').textContent.includes('Anonymous players'));
-assert.ok([...document.querySelectorAll('.ins-filter button')].find(b=>b.textContent==='All versions').disabled);
+assert.ok(document.querySelector('.ins-version-fixed'));
+assert.ok(![...document.querySelectorAll('.ins-filter button')].some(b=>b.textContent==='All versions'));
 const comparisonTable=document.querySelector('.ins-body .viz-toggle');comparisonTable.click();assert.ok(document.querySelector('.ins-body .viz-table'));
 [...document.querySelectorAll('.ins-filter button')].find(b=>b.textContent==='Hinted').click();
 assert.equal(document.querySelectorAll('.ins-compare-pair').length,0,'Never reuse raw observations in hinted comparison');
+[...document.querySelectorAll('.ins-filter button')].find(b=>b.textContent==='Standard').click();
+assert.equal([...document.querySelectorAll('.ins-filter button')].find(b=>b.textContent==='Current').getAttribute('aria-pressed'),'true');
 assert.equal(document.querySelectorAll('.variant-note').length,0);
 if(errors.length)console.error(errors.map(e=>e.stack));
 for(const game of ['pd','rps','ultimatum','blotto','liarsdice','holdem'])assert.ok(requests.some(r=>r.game===game),`No decision exercised for ${game}`);

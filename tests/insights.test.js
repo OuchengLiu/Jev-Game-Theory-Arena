@@ -31,3 +31,16 @@ test('comparison never falls back to legacy results and isolates assistance and 
  assert.equal(comparisonGroups(data,{currentVersions:{pd:'2.0'}}).length,2);
  assert.equal(comparisonGroups({rows:[r]},{currentVersions:{pd:'2.0'}}).length,0);
 });
+
+test('practice history bypasses model policy filters and only audited bots enter current view',()=>{
+ const make=(game)=>({game,game_ver:'1.4',kind:'end',mode:'practice',policy:'',act:'win',n:2});
+ const data={rows:[make('pd'),make('ultimatum'),make('blotto'),make('rps'),{...make('pd'),kind:'move',actor:'bot',mode:'raw',n:4}]};
+ const currentVersions={pd:'2.0',ultimatum:'2.0',blotto:'2.1',rps:'2.0'};
+ for(const policy of ['greedy','sample']) {
+  const all=insightRows(data,{policy,currentVersions});
+  assert.equal(all.filter(r=>r.mode==='practice').length,4);
+  const current=insightRows(data,{version:'latest',policy,currentVersions});
+  assert.deepEqual(current.filter(r=>r.mode==='practice').map(r=>r.game),['pd','ultimatum']);
+  assert.ok(current.some(r=>r.actor==='bot'));
+ }
+});

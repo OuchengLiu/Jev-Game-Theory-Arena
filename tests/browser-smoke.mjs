@@ -1,4 +1,5 @@
 // Run with PLAYWRIGHT_MODULE pointing to an installed Playwright module and a local server on :8765.
+import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {mkdirSync} from 'node:fs';
 import {buildJevRequest} from '../shared/prompts.js';
@@ -31,6 +32,18 @@ for(const game of ['pd','rps','ultimatum','blotto','liarsdice','holdem']) {
  const actions=await page.locator('.board button').evaluateAll(es=>es.filter(e=>!e.disabled).map(e=>e.innerText));console.log('buttons',actions);
  await page.screenshot({path:`${screenshots}/${game}.png`});
 }
-await page.goto('http://localhost:8765/#/insights');await page.waitForSelector('.ins-comparison');
+for(const width of [1280,320,375,430]) {
+ await page.setViewportSize({width,height:900});
+ await page.goto('http://localhost:8765/#/insights');await page.waitForSelector('.ins-filter-bar');
+ for(const compare of [false,true]) {
+  if(compare)await page.getByRole('button',{name:'Compare',exact:true}).click();
+  const boxes=await page.locator('.ins-filter-bar button').evaluateAll(es=>es.map(e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,height:r.height};}));
+  for(const b of boxes){assert.ok(b.left>=0 && b.right<=width,`Filter overflow at ${width}px`);if(width<=640)assert.ok(b.height>=44,'Mobile touch targets must be at least 44px');}
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No horizontal page overflow');
+  if(compare)assert.equal(await page.locator('.ins-version-fixed').count(),1);
+  await page.screenshot({path:`${screenshots}/insights-${width}-${compare?'compare':'overview'}.png`,fullPage:true});
+ }
+ await page.getByRole('button',{name:'Standard',exact:true}).click();
+}
 console.log('errors',errors,'requests',requests.length,'logs',logs.length);
 await browser.close();if(errors.length)process.exitCode=1;
