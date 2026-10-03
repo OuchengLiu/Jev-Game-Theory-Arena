@@ -8,7 +8,7 @@ http.createServer(async(req,res)=>{
  try {
   const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
   // Serve only public frontend assets; never expose configs, secrets or local reports.
-  if(!(pathname==='/' || pathname==='/index.html' || /^\/(js|shared|css|assets)\//.test(pathname)) || pathname.split('/').some(s=>s.startsWith('.'))) {res.writeHead(404).end();return;}
+  if(!(pathname==='/' || ['/index.html','/sw.js','/version.json'].includes(pathname) || /^\/(js|shared|css|assets)\//.test(pathname)) || pathname.split('/').some(s=>s.startsWith('.'))) {res.writeHead(404).end();return;}
   const file=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));
   if(!file.startsWith(root)){res.writeHead(403).end();return;}
   let data=await readFile(file);

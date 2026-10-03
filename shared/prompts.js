@@ -17,6 +17,7 @@
 //   * one decision per question, criteria describing each option literally
 //   * small, relevant state
 
+import { validateChoiceLimits } from './decision-limits.js';
 import { check, SchemaError } from './schema.js';
 import { createPd } from './games/pd.js';
 import { createRps } from './games/rps.js';
@@ -41,6 +42,7 @@ export function buildJevRequest(game, payload, mode = 'hinted', variant = 'stand
   const impl = mode === 'raw' && g.raw ? g.raw : g;
   const clean = check(impl.schema, payload);
   const { state, questions } = impl.build(clean);
+  validateChoiceLimits(questions);
   return { model: MODEL, state, questions };
 }
 

@@ -1,3 +1,4 @@
+import { BLOTTO_PLANS } from './blotto-plans.js';
 import { S, SchemaError } from '../schema.js';
 
 // Each ruleset has its own closure: no mutable cross-request rule state.
@@ -9,7 +10,7 @@ export function createBlottoRules(variant = 'standard') {
 // (Ridge, Ford, Fort). More soldiers takes a field; more fields takes the round.
 //
 // Clean ablation (see shared/prompts.js): base() builds the Raw request from the record
-// (rules, neutral goal, round, score, full history, all 66 splits). Hinted = that identical
+// (rules, neutral goal, round, score, full history, the fixed allocation menu). Hinted = that identical
 // base + `state.analysis` (opponent tendency words, what the estimates are based on) + an
 // " Analysis: …" outlook suffix on each option. The browser (js/games/blotto-core.js)
 // computes the estimates; the hinted payload is the raw record + basis/tendencies/candidates.
@@ -21,10 +22,8 @@ const VALUES = generalized ? [1,2,3,4] : [1,1,1];
 const SOLDIERS = 10;
 const ROUNDS = 7;
 
-/** All 66 ways to split 10 soldiers over 3 fields, Ridge-heavy first. */
-const ALLOCS = [];
-function allocate(prefix, left) { if (prefix.length === FIELDS.length - 1) { ALLOCS.push([...prefix,left]); return; } for(let n=left;n>=0;n--) allocate([...prefix,n],left-n); }
-allocate([], SOLDIERS);
+// The menu defines the legal action space; no mode-specific or opponent-dependent filtering.
+const ALLOCS = BLOTTO_PLANS[variant].map(a => [...a]);
 const allocId = (x) => `a${x.join('-')}`;
 const ALLOC_IDS = ALLOCS.map(allocId);
 const BY_ID = Object.fromEntries(ALLOCS.map((x) => [allocId(x), x]));
@@ -72,11 +71,11 @@ const SCHEMA = S.obj({
 });
 
 const RULES = generalized ? [
- 'Both players simultaneously and secretly allocate exactly 10 soldiers to Plain, Pass, Fort, Port. All allocations are available. Seven rounds; most round wins wins the match.',
+ 'Both players simultaneously and secretly allocate exactly 10 soldiers to Plain, Pass, Fort, Port. Both players must choose one of the same 32 fixed allocation plans. Seven rounds; most round wins wins the match.',
  'Plain: value 1, more soldiers wins. Pass: value 2, only the first 3 soldiers count. Fort: value 3, win only with a lead of at least 2 soldiers; otherwise tied. Port: value 4, each complete pair of soldiers is one strength; higher strength wins.',
  'Tied fields give neither player points. The higher total battlefield value wins the round; equal totals draw. Neither sees the current opposing allocation.'
  ] : [
-  'Each round both players secretly split exactly 10 soldiers across three battlefields: the Ridge, the Ford and the Fort. Any whole number from 0 to 10 may go to each field.',
+  'Each round both players secretly split exactly 10 soldiers across three battlefields: the Ridge, the Ford and the Fort. Both players must choose one of the same 16 fixed allocation plans.',
   'A battlefield is won by whoever placed MORE soldiers there. Equal numbers means nobody wins that field.',
   'Whoever wins more battlefields wins the round; otherwise the round is a draw.',
   'Splits are revealed at the same time, so you cannot react to the opponent this round.',
@@ -148,7 +147,7 @@ function scoreText(s) {
 
 const optionText = (x) => `${splitText(x)}.`;
 
-/** Shared base: rules, neutral goal, round, score, full record, all 66 literal splits. */
+/** Shared base: rules, neutral goal, round, score, full record, the complete fixed menu. */
 function base(p) {
   checkRounds(p);
   const { round, total, history } = p;
@@ -166,7 +165,7 @@ function base(p) {
     questions: {
       action: {
         type: 'choice',
-        instructions: `How do you split your 10 soldiers across ${FIELDS.join(", ")} this round?`,
+        instructions: `How do you split your ${SOLDIERS} soldiers across ${FIELDS.join(", ")} this round?`,
         criteria,
       },
       opp_stacks: {

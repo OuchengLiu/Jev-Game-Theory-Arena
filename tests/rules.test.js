@@ -21,10 +21,16 @@ function sameOptions(game,raw,hinted,v) {
 for(const v of variants) {
  test(`${v}: full Blotto action sets, symmetric scoring and no unbeatable allocation`,()=>{
   const c=createBlotto(v),p=c.makePayloads([]);sameOptions('blotto',p.raw,p.hinted,v);
-  assert.equal(p.candidateIds.length,v==='standard'?66:286);
-  for(const a of c.ALLOCS) {assert.equal(a.reduce((s,x)=>s+x,0),10);let beaten=false;
+  assert.equal(p.candidateIds.length,v==='standard'?16:32);
+  for(const a of c.ALLOCS) {assert.equal(a.reduce((s,x)=>s+x,0),c.SOLDIERS);let beaten=false;
    for(const b of c.ALLOCS) {const ab=c.roundResult(a,b),ba=c.roundResult(b,a);assert.equal(ab+ba,0);beaten ||= ab<0;}
    assert.ok(beaten,`${a} must have a counter`);
+   assert.ok(c.ALLOCS.some(b=>c.roundResult(a,b)>0),`${a} must beat an opponent`);
+   for(const b of c.ALLOCS) {
+    const weaklyBetter=c.ALLOCS.every(x=>c.roundResult(b,x)>=c.roundResult(a,x));
+    const strictlyBetter=c.ALLOCS.some(x=>c.roundResult(b,x)>c.roundResult(a,x));
+    assert.ok(!(weaklyBetter&&strictlyBetter),`${a} must not be dominated by ${b}`);
+   }
   }
  });
  test(`${v}: RPS chooses its own move, plus independent prediction`,()=>{
@@ -82,4 +88,21 @@ test('provider boundary never falls through from disabled OpenAI to Jev',async()
 test('all standard preflop labels remain valid when variant equity label is added',()=>{
  const c=createHoldem(),hand=c.newHand([200,200],0,rng()),payload=c.makePayload(hand,0,c.emptyStats(),[],1,10,rng());
  for(const kind of c.PREFLOP_KINDS)assert.doesNotThrow(()=>buildJevRequest('holdem',{...payload,hand:kind},'hinted','standard'));
+});
+
+test('oversized choices fail before a paid provider call',async()=>{
+ const {runDecision}=await import('../worker/src/decision-provider.js');
+ let calls=0;
+ const criteria=Object.fromEntries(Array.from({length:256},(_,i)=>['a'+i,'Option '+i]));
+ await assert.rejects(()=>runDecision('jev',{AI:{run:async()=>{calls++;}}},{questions:{action:{type:'choice',criteria}}}),/255-option/);
+ assert.equal(calls,0);
+});
+test('generalized Blotto keeps all 32 legal actions after completed rounds',()=>{
+ const c=createBlotto('generalization');
+ const history=[{jev:c.ALLOCS[0],opp:c.ALLOCS[1]},{jev:c.ALLOCS[2],opp:c.ALLOCS[3]}];
+ const p=c.makePayloads(history);
+ const request=sameOptions('blotto',p.raw,p.hinted,'generalization');
+ assert.equal(Object.keys(request.questions.action.criteria).length,32);
+ assert.ok(c.PRIOR.every(Number.isFinite));
+ assert.ok(Math.abs(c.PRIOR.reduce((a,b)=>a+b,0)-1)<1e-10);
 });

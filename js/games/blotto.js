@@ -101,7 +101,7 @@ export default {
       title: 'Colonel Blotto',
       tagline: 'Ten soldiers, three battlefields, sealed orders. Any plan Jev can read, Jev can beat.',
       concept: 'No pure-strategy equilibrium',
-      rules: 'Each round you and Jev secretly split 10 soldiers across the Ridge, the Ford and the Fort. More soldiers takes a field; win more fields to take the round. Seven rounds, most rounds wins. There is no best split: 4-3-3 beats 10-0-0 but loses to 5-5-0, which loses to 6-2-2. Any habit can be countered, so the only safe plan is an unpredictable one.',
+      rules: 'Each round you and Jev secretly choose from the same 16 fixed plans for 10 soldiers across the Ridge, the Ford and the Fort. More soldiers takes a field; win more fields to take the round. Seven rounds, most rounds wins. Every plan has a counter among the available plans. Any habit can be countered, so the only safe plan is an unpredictable one.',
       ridge: 'Ridge', ford: 'Ford', fort: 'Fort',
       mapTitle: 'Theatre of operations',
       you: 'You', jev: 'Jev',
@@ -146,7 +146,7 @@ export default {
       title: '布洛托上校',
       tagline: '十名士兵，三处战场，密封的军令。只要被 Jev 看穿，就会被 Jev 击败。',
       concept: '没有纯策略均衡',
-      rules: '每回合你和 Jev 各自秘密地把 10 名士兵分配到山脊、渡口、堡垒三处战场。兵多者拿下该战场，拿下战场多者赢得本回合。共 7 回合，赢得回合多者胜。不存在最优分配：4-3-3 能赢 10-0-0，却输给 5-5-0，而 5-5-0 又输给 6-2-2。任何习惯都会被针对，唯一安全的打法是让对手猜不透。',
+      rules: '每回合你和 Jev 从相同的16个固定方案中秘密选择，把10名士兵分配到山脊、渡口、堡垒三处战场。兵多者拿下该战场，拿下战场多者赢得本回合。共 7 回合，赢得回合多者胜。每个可选方案都存在克制它的方案。任何习惯都会被针对，唯一安全的打法是让对手猜不透。',
       ridge: '山脊', ford: '渡口', fort: '堡垒',
       mapTitle: '作战地图',
       you: '你', jev: 'Jev',
@@ -196,7 +196,21 @@ export default {
     const { ALLOC_IDS, ROUNDS, SOLDIERS, FIELD_KEYS, parseAlloc, makePayloads, botWeights, resolve,
   randomAlloc, tendencies } = createBlotto(variant);
     const { t, h, panel } = ctx;
-    const L = (k, v) => generalized && ['balanced','keys','q'].includes(k) ? (ctx.settings.get('lang') === 'zh' ? {balanced:'均衡分兵',keys:'1–4 增派 · Shift 撤回 · 回车出兵',q:'四地域分兵'} : {balanced:'Balanced split',keys:'1–4 add · Shift removes · Enter deploys',q:'Four-territory allocation'})[k] : t(`blotto.${k}`, v);
+    const L = (k, v) => {
+      const zh = ctx.settings.get('lang') === 'zh';
+      const labels = zh ? {
+        balanced:'均衡方案', keys:'选择方案后点击出兵；回车确认。',
+        plan:`第 ${v?.n} 回合：选择你的分兵方案`,
+        menu:`双方从相同的 ${ALLOC_IDS.length} 个固定方案中选择；数字依次对应上方战场。`,
+      } : {
+        balanced:'Balanced plan', keys:'Select a plan, then deploy. Enter confirms.',
+        plan:`Round ${v?.n}: choose your allocation`,
+        menu:`Both sides choose from the same ${ALLOC_IDS.length} fixed plans. Numbers follow the battlefield order above.`,
+      };
+      if (k in labels) return labels[k];
+      if (generalized && k === 'q') return zh ? '四地域分兵' : 'Four-territory allocation';
+      return t(`blotto.${k}`, v);
+    };
     let alive = true;
     let gen = 0;
     const timers = new Set();
@@ -248,24 +262,9 @@ export default {
       );
     }
 
-    function step(i, d) {
-      if (phase !== 'plan') return;
-      if (d > 0 && placed() >= SOLDIERS) return;
-      if (d < 0 && alloc[i] <= 0) return;
-      const from = d > 0
-        ? tokenEl(`.bl-reserve .bl-tok.on:nth-child(${SOLDIERS - placed()})`)
-        : tokenEl(`.bl-field[data-i="${i}"] .bl-side-you .bl-tok.on:nth-child(${alloc[i]})`);
-      const rect = from?.getBoundingClientRect();
-      alloc[i] += d;
-      render();
-      const to = d > 0
-        ? tokenEl(`.bl-field[data-i="${i}"] .bl-side-you .bl-tok.on:nth-child(${alloc[i]})`)
-        : tokenEl(`.bl-reserve .bl-tok.on:nth-child(${SOLDIERS - placed()})`);
-      fly(rect, to);
-    }
-
     function setAlloc(next) {
       if (phase !== 'plan') return;
+      if (!ALLOC_IDS.some(id => parseAlloc(id).join() === next.join())) return;
       alloc = [...next];
       render();
       if (!reducedMotion()) {
@@ -277,16 +276,18 @@ export default {
     }
 
     function presetBalanced() {
-      const shapes = generalized ? [[3,3,2,2],[2,2,4,2],[2,2,2,4],[1,3,2,4]] : [[4, 3, 3], [3, 4, 3], [3, 3, 4]];
-      const cur = shapes.findIndex((s) => s.join() === alloc.join());
-      balancedTurn = cur >= 0 ? (cur + 1) % shapes.length : 0;
-      setAlloc(shapes[balancedTurn]);
+      const plans = ALLOC_IDS.map(parseAlloc);
+      const spread = a => Math.max(...a) - Math.min(...a);
+      const best = Math.min(...plans.map(spread));
+      const shapes = plans.filter(a => spread(a) === best);
+      const cur = shapes.findIndex(a => a.join() === alloc.join());
+      setAlloc(shapes[(cur + 1) % shapes.length]);
     }
 
     // ---------- a round ----------
 
     async function deploy() {
-      if (phase !== 'plan' || placed() !== SOLDIERS) return;
+      if (phase !== 'plan' || !ALLOC_IDS.some(id => parseAlloc(id).join() === alloc.join())) return;
       const g = gen;
       const you = [...alloc];
       phase = 'thinking';
@@ -364,12 +365,6 @@ export default {
       if (!alive || !board.isConnected || e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = e.target?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable) return;
-      const m = /^Digit([1-4])$/.exec(e.code) || /^Numpad([1-4])$/.exec(e.code);
-      if (m && Number(m[1])<=FIELD_KEYS.length && phase === 'plan') {
-        e.preventDefault();
-        step(Number(m[1]) - 1, e.shiftKey ? -1 : 1);
-        return;
-      }
       if (e.key === 'Enter' && tag !== 'BUTTON' && tag !== 'A') {
         if (phase === 'plan' && placed() === SOLDIERS) { e.preventDefault(); deploy(); }
         else if (phase === 'done') { e.preventDefault(); nextRound(); }
@@ -412,17 +407,7 @@ export default {
       ),
       h('div.bl-side.bl-side-you',
         tokens(youN, 'bl-tokens-you'),
-        h('div.bl-stepper', { class: canPlan ? '' : 'bl-locked' },
-          h('button.bl-step', {
-            type: 'button', 'data-focus': `minus-${i}`, disabled: !canPlan || alloc[i] <= 0,
-            'aria-label': L('remove', { f: fieldName(i) }), onclick: () => step(i, -1),
-          }, h('span', { 'aria-hidden': 'true' }, '−')),
-          h('output.bl-num', { 'aria-live': 'polite' }, youN),
-          h('button.bl-step', {
-            type: 'button', 'data-focus': `plus-${i}`, disabled: !canPlan || placed() >= SOLDIERS,
-            'aria-label': L('add', { f: fieldName(i) }), onclick: () => step(i, 1),
-          }, h('span', { 'aria-hidden': 'true' }, '+')),
-        ),
+        h('div.bl-stepper.bl-locked', h('output.bl-num', { 'aria-live': 'polite' }, youN)),
       ));
     }
 
@@ -447,18 +432,23 @@ export default {
       const left = SOLDIERS - placed();
       const last = history.length ? history[history.length - 1].opp : null;
       return h('div.bl-controls',
-        h('div.bl-reserve', { class: left === 0 ? 'bl-empty' : '' },
-          h('div.bl-reserve-head',
-            h('span.bl-reserve-label', L('reserve')),
-            h('span.bl-left', left === 0 ? L('ready') : left === 1 ? L('left1') : L('left', { n: left })),
-          ),
-          tokens(left, 'bl-tokens-reserve'),
+        h('p.muted.bl-menu-help', L('menu')),
+        h('div.bl-plan-grid', {role:'group', 'aria-label':L('plan', {n:history.length+1})},
+          ALLOC_IDS.map((id,i) => {
+            const values = parseAlloc(id), selected = values.join() === alloc.join();
+            return h('button.btn.ghost.bl-plan', {
+              type:'button', 'data-focus':`plan-${id}`, 'data-allocation':id,
+              'aria-pressed':String(selected),
+              'aria-label':values.map((n,k)=>`${fieldName(k)} ${n}`).join(', '),
+              onclick:()=>setAlloc(values),
+            }, h('small', String(i+1).padStart(2,'0')), h('span', values.join(' · ')));
+          }),
         ),
         h('div.bl-presets',
           h('button.btn.ghost.bl-preset', { type: 'button', 'data-focus': 'balanced', onclick: presetBalanced }, L('balanced')),
           h('button.btn.ghost.bl-preset', { type: 'button', 'data-focus': 'random', onclick: () => setAlloc(randomAlloc()) }, L('random')),
           last ? h('button.btn.ghost.bl-preset', { type: 'button', 'data-focus': 'same', onclick: () => setAlloc(last) }, L('same')) : null,
-          h('button.btn.ghost.bl-preset', { type: 'button', 'data-focus': 'clear', disabled: placed() === 0, onclick: () => setAlloc(FIELD_KEYS.map(()=>0)) }, L('clear')),
+
         ),
         h('button.btn.lg.bl-deploy', { type: 'button', 'data-focus': 'deploy', disabled: left !== 0, onclick: deploy }, L('deploy')),
         h('p.bl-keys.muted', L('keys')),

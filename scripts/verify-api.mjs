@@ -7,6 +7,8 @@ import {validateAnswers} from '../worker/src/models.js';
 
 // Fixed loopback endpoint: synthetic requests must never reach the production database.
 const base='http://localhost:8787', origin='http://localhost:8000';
+const gameFilter=process.argv.find(a=>a.startsWith('--game='))?.slice(7);
+if(gameFilter && !['pd','rps','ultimatum','blotto','liarsdice','holdem'].includes(gameFilter))throw new Error('Unknown --game filter');
 const fixtures=[];
 const rng=()=>{let n=73453;return ()=>((n=(Math.imul(n,1664525)+1013904223)>>>0)/2**32);};
 for(const variant of ['standard','generalization']) {
@@ -20,7 +22,7 @@ for(const variant of ['standard','generalization']) {
    liarsdice:(mode==='raw'?d.makeRawPayload([1,2,3,4,5],5,[]):d.makePayload([1,2,3,4,5],5,[],{})).payload,
    holdem:mode==='raw'?h.makeRawPayload(hand,0):h.makePayload(hand,0,h.emptyStats(),[],1,100,rng()),
   };
-  for(const [game,payload] of Object.entries(payloads))fixtures.push({game,variant,mode,payload,questions:buildJevRequest(game,payload,mode,variant).questions});
+  for(const [game,payload] of Object.entries(payloads).filter(([game])=>!gameFilter || game===gameFilter))fixtures.push({game,variant,mode,payload,questions:buildJevRequest(game,payload,mode,variant).questions});
  }
 }
 if(process.argv.includes('--fixtures-only')) {

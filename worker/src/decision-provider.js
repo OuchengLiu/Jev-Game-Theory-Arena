@@ -1,3 +1,4 @@
+import { validateChoiceLimits } from '../../shared/decision-limits.js';
 import { availableModels, validateAnswers } from './models.js';
 export class ProviderError extends Error {
   constructor(code, message, status=502, retryAfter=30) {super(message);this.code=code;this.status=status;this.retryAfter=retryAfter;}
@@ -37,6 +38,7 @@ const ADAPTERS={jev,luna:openaiDecisions};
 export async function runDecision(opponent,env,request) {
   if(!availableModels(env).includes(opponent)) throw new ProviderError('not_configured','Decision model unavailable',503,600);
   try {
+    validateChoiceLimits(request.questions);
     const result=await ADAPTERS[opponent](env,request);
     return {model:result.model,answers:validateAnswers(request.questions,result.answers)};
   } catch(e) {

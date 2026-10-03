@@ -25,7 +25,7 @@ const OUTCOME = ALLOCS.map((a) => ALLOCS.map((b) => roundResult(a, b)));
 
 // A sensible prior for how people split 10 soldiers: mostly balanced-ish (4-3-3, 5-3-2,
 // 4-4-2...), heavy stacks are rarer, an all-in 10-0-0 shows up now and then.
-const MAX_WEIGHT = [0, 0, 0, 0, 1, 0.85, 0.5, 0.25, 0.1, 0.05, 0.08];
+const MAX_WEIGHT = [0, 0, 0, generalized ? 1 : 0, 1, 0.85, 0.5, 0.25, 0.1, 0.05, 0.08];
 const PRIOR = (() => {
   const w = ALLOCS.map((x) => MAX_WEIGHT[Math.max(...x)] * (x.includes(0) && Math.max(...x) < 10 ? 0.7 : 1));
   const s = w.reduce((a, b) => a + b, 0);
