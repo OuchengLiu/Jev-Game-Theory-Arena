@@ -1,3 +1,8 @@
+
+// Each ruleset has its own closure: no mutable cross-request rule state.
+export function createDice(variant = 'standard') {
+  if (!['standard', 'generalization'].includes(variant)) throw new Error('Unknown ruleset');
+  const generalized = variant === 'generalization';
 // Liar's Dice — pure game logic (no DOM, no engine imports) so it can be unit-tested
 // from Node. Used by js/games/liarsdice.js.
 //
@@ -6,29 +11,29 @@
 // face in 2..6. A raise is a higher quantity (any face) or the same quantity with a
 // higher face.
 
-export const FACES = [2, 3, 4, 5, 6];
-export const START_DICE = 5;
-export const MAX_BID_OPTIONS = 10;
-export const BID_IDS = Array.from({ length: MAX_BID_OPTIONS }, (_, i) => `b${i}`);
-export const LIKELIHOODS = ['certain', 'very_likely', 'likely', 'coin_flip', 'unlikely', 'very_unlikely', 'impossible'];
-export const STYLES = ['unknown', 'honest', 'bluffs_sometimes', 'bluffs_often'];
+const FACES = generalized ? [1,2,3,4,5,6] : [2,3,4,5,6];
+const START_DICE = 5;
+const MAX_BID_OPTIONS = 60;
+const BID_IDS = Array.from({ length: MAX_BID_OPTIONS }, (_, i) => `b${i}`);
+const LIKELIHOODS = ['certain', 'very_likely', 'likely', 'coin_flip', 'unlikely', 'very_unlikely', 'impossible'];
+const STYLES = ['unknown', 'honest', 'bluffs_sometimes', 'bluffs_often'];
 
-export const rollDice = (n, rng = Math.random) => Array.from({ length: n }, () => 1 + Math.floor(rng() * 6));
+const rollDice = (n, rng = Math.random) => Array.from({ length: n }, () => 1 + Math.floor(rng() * 6));
 
 /** Number of dice matching `face`, counting 1s as wild. */
-export const countFace = (dice, face) => dice.filter((d) => d === face || d === 1).length;
+const countFace = (dice, face) => dice.filter((d) => d === face || (!generalized && d === 1)).length;
 
 /** Is bid `a` strictly higher than bid `b`? */
-export const isHigher = (a, b) => a.qty > b.qty || (a.qty === b.qty && a.face > b.face);
+const isHigher = (a, b) => a.qty > b.qty || (a.qty === b.qty && a.face > b.face);
 
-export function isLegalBid(bid, current, totalDice) {
+function isLegalBid(bid, current, totalDice) {
   if (!bid || !Number.isInteger(bid.qty) || !FACES.includes(bid.face)) return false;
   if (bid.qty < 1 || bid.qty > totalDice) return false;
   return !current || isHigher(bid, current);
 }
 
 /** Smallest legal quantity for `face` given the current bid. */
-export const minQty = (face, current) => (!current ? 1 : face > current.face ? current.qty : current.qty + 1);
+const minQty = (face, current) => (!current ? 1 : face > current.face ? current.qty : current.qty + 1);
 
 function choose(n, k) {
   let r = 1;
@@ -37,7 +42,7 @@ function choose(n, k) {
 }
 
 /** P(X >= need) for X ~ Binomial(n, p). */
-export function probAtLeast(need, n, p = 1 / 3) {
+function probAtLeast(need, n, p = generalized ? 1 / 6 : 1 / 3) {
   if (need <= 0) return 1;
   if (need > n) return 0;
   let s = 0;
@@ -46,11 +51,11 @@ export function probAtLeast(need, n, p = 1 / 3) {
 }
 
 /** Probability that `bid` is true, seen from someone holding `ownDice` against `oppCount` hidden dice. */
-export function bidProb(ownDice, oppCount, bid) {
-  return probAtLeast(bid.qty - countFace(ownDice, bid.face), oppCount, 1 / 3);
+function bidProb(ownDice, oppCount, bid) {
+  return probAtLeast(bid.qty - countFace(ownDice, bid.face), oppCount, generalized ? 1 / 6 : 1 / 3);
 }
 
-export function bucket(ownDice, oppCount, bid) {
+function bucket(ownDice, oppCount, bid) {
   const need = bid.qty - countFace(ownDice, bid.face);
   if (need <= 0) return 'certain';
   if (need > oppCount) return 'impossible';
@@ -64,7 +69,7 @@ export function bucket(ownDice, oppCount, bid) {
  * (when opening: the plausible quantity, one above, and the safe own-dice quantity).
  * At most MAX_BID_OPTIONS, sorted from lowest to highest bid.
  */
-export function candidateBids(ownDice, oppCount, current) {
+function candidateBids(ownDice, oppCount, current) {
   const total = ownDice.length + oppCount;
   const tiers = [[], [], []];
   for (const face of FACES) {
@@ -99,7 +104,7 @@ export function candidateBids(ownDice, oppCount, current) {
 }
 
 /** Opponent style from how many of their bids turned out true/false at past reveals. */
-export function styleBucket(stats) {
+function styleBucket(stats) {
   const n = (stats?.honest || 0) + (stats?.bluff || 0);
   if (n < 2) return 'unknown';
   const r = stats.bluff / n;
@@ -107,7 +112,7 @@ export function styleBucket(stats) {
 }
 
 /** Update style stats with every bid `by` made this round, judged against all dice. */
-export function recordBids(stats, bids, by, allDice) {
+function recordBids(stats, bids, by, allDice) {
   const s = { honest: stats?.honest || 0, bluff: stats?.bluff || 0 };
   for (const b of bids) {
     if (b.by !== by) continue;
@@ -118,7 +123,7 @@ export function recordBids(stats, bids, by, allDice) {
 }
 
 /** Resolve a challenge against `bid` given every die on the table. */
-export function resolveChallenge(allDice, bid) {
+function resolveChallenge(allDice, bid) {
   const count = countFace(allDice, bid.face);
   return { count, bidTrue: count >= bid.qty };
 }
@@ -128,15 +133,10 @@ export function resolveChallenge(allDice, bid) {
  * legal quantity, then (if room remains) one more than that. At most MAX_BID_OPTIONS.
  * (Not used for Jev's options — both modes share candidateBids — kept for tests/tools.)
  */
-export function rawCandidateBids(current, totalDice) {
-  const first = [];
-  const second = [];
-  for (const face of FACES) {
-    const m = minQty(face, current);
-    if (m <= totalDice) first.push({ qty: m, face });
-    if (m + 1 <= totalDice) second.push({ qty: m + 1, face });
-  }
-  return [...first, ...second].slice(0, MAX_BID_OPTIONS).sort((a, b) => a.qty - b.qty || a.face - b.face);
+function rawCandidateBids(current, totalDice) {
+ const out=[];
+ for(let qty=1;qty<=totalDice;qty++) for(const face of FACES) if(!current || isHigher({qty,face},current)) out.push({qty,face});
+ return out;
 }
 
 /**
@@ -146,7 +146,7 @@ export function rawCandidateBids(current, totalDice) {
  * `pastRounds`: [{ bid:{by,qty,face}, called_by, actual, loser, opp_dice }] from Jev's view.
  * Returns { payload, optionMap } where optionMap maps option id -> {type:'bid', qty, face} | {type:'challenge'}.
  */
-export function makeRawPayload(ownDice, oppCount, bids, pastRounds = []) {
+function makeRawPayload(ownDice, oppCount, bids, pastRounds = []) {
   const current = bids.length ? bids[bids.length - 1] : null;
   const optionMap = {};
   const options = [];
@@ -156,7 +156,7 @@ export function makeRawPayload(ownDice, oppCount, bids, pastRounds = []) {
   }
   // Same candidate set in both modes, so the modes differ only in what Jev is told,
   // not in which moves it may make.
-  candidateBids(ownDice, oppCount, current).forEach((b, i) => {
+  rawCandidateBids(current, ownDice.length + oppCount).forEach((b, i) => {
     const id = BID_IDS[i];
     options.push({ id, qty: b.qty, face: b.face });
     optionMap[id] = { type: 'bid', qty: b.qty, face: b.face };
@@ -164,7 +164,7 @@ export function makeRawPayload(ownDice, oppCount, bids, pastRounds = []) {
   const payload = {
     jev_dice: [...ownDice].sort((a, b) => a - b),
     opp_dice_count: oppCount,
-    bids: bids.slice(-50).map((b) => ({ by: b.by, qty: b.qty, face: b.face })),
+    bids: bids.slice(-60).map((b) => ({ by: b.by, qty: b.qty, face: b.face })),
     past_rounds: pastRounds.slice(-9).map((r) => ({
       bid: { by: r.bid.by, qty: r.bid.qty, face: r.bid.face },
       called_by: r.called_by,
@@ -182,7 +182,7 @@ export function makeRawPayload(ownDice, oppCount, bids, pastRounds = []) {
  * code-computed analysis fields — a likelihood bucket per bid option, the current bid's
  * likelihood and the opponent's bluffing style. Same option ids / optionMap as the raw one.
  */
-export function makePayload(ownDice, oppCount, bids, oppStats, pastRounds = []) {
+function makePayload(ownDice, oppCount, bids, oppStats, pastRounds = []) {
   const { payload: raw, optionMap } = makeRawPayload(ownDice, oppCount, bids, pastRounds);
   const current = bids.length ? bids[bids.length - 1] : null;
   const payload = {
@@ -202,7 +202,7 @@ const VAL = { certain: 1, very_likely: 0.9, likely: 0.72, coin_flip: 0.5, unlike
  * Likelihood-based mixed strategy with occasional bluffs.
  * Returns { action: {id: weight}, oppBluff: probability }.
  */
-export function botWeights(payload) {
+function botWeights(payload) {
   const { options, opp_style: style } = payload;
   const cur = payload.current_likelihood ? { likelihood: payload.current_likelihood } : null;
   const bids = options.filter((o) => o.id !== 'challenge');
@@ -227,3 +227,9 @@ export function botWeights(payload) {
   }
   return { action: w, oppBluff };
 }
+
+return { FACES, START_DICE, MAX_BID_OPTIONS, BID_IDS, LIKELIHOODS, STYLES, rollDice, countFace, isHigher, isLegalBid, minQty, probAtLeast, bidProb, bucket, candidateBids, styleBucket, recordBids, resolveChallenge, rawCandidateBids, makeRawPayload, makePayload, botWeights };
+}
+
+const standard = createDice();
+export const { FACES, START_DICE, MAX_BID_OPTIONS, BID_IDS, LIKELIHOODS, STYLES, rollDice, countFace, isHigher, isLegalBid, minQty, probAtLeast, bidProb, bucket, candidateBids, styleBucket, recordBids, resolveChallenge, rawCandidateBids, makeRawPayload, makePayload, botWeights } = standard;

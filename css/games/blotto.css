@@ -159,7 +159,7 @@
 .bl-emblem svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .bl-e-fill { fill: color-mix(in srgb, var(--bl-paper-1) 80%, #fff); }
 .bl-e-line { fill: none; stroke: var(--bl-ink); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
-polygon.bl-e-line { fill: color-mix(in srgb, var(--bl-paper-1) 85%, #fff); }
+polygon.bl-e-line, path.bl-e-fill.bl-e-line { fill: color-mix(in srgb, var(--bl-paper-1) 85%, #fff); }
 .bl-e-hatch { fill: none; stroke: var(--bl-ink-2); stroke-width: 1; stroke-linecap: round; }
 .bl-e-soft { fill: none; stroke: var(--bl-ink-soft); stroke-width: 1; }
 .bl-e-flag { fill: var(--gold); stroke: var(--bl-ink); stroke-width: 1; stroke-linejoin: round; }
@@ -340,3 +340,7 @@ polygon.bl-e-line { fill: color-mix(in srgb, var(--bl-paper-1) 85%, #fff); }
   .bl-num { min-width: 18px; }
   .bl-stepper { gap: 0; padding: 2px; }
 }
+
+.bl-four .bl-fields { grid-template-columns: repeat(4, minmax(0,1fr)); }
+.bl-four .bl-site small {display:block;text-align:center;font-size:11px;}
+@media(max-width:700px) {.bl-four .bl-fields {grid-template-columns:repeat(2,minmax(0,1fr));}}

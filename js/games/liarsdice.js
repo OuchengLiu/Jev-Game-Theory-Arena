@@ -6,6 +6,7 @@ import {
   FACES, START_DICE, rollDice, countFace, isLegalBid, minQty, bidProb, bucket,
   makePayload, makeRawPayload, recordBids, resolveChallenge, botWeights,
 } from './liarsdice-core.js';
+import { createDice } from './liarsdice-core.js';
 
 // Practice bot (automatic fallback when Jev is unreachable): likelihood-based mixed
 // strategy with occasional bluffs (see botWeights). Always receives the hinted payload.
@@ -57,7 +58,7 @@ function cupSvg(id, open) {
 
 export default {
   id: 'liarsdice',
-  meta: { icon: '🎲', accent: '#c9a45c', minutes: 6, version: '1.4' },
+  meta: { icon: '🎲', accent: '#c9a45c', minutes: 6, version: '2.0' },
   strings: {
     en: {
       title: 'Liar’s Dice',
@@ -150,8 +151,13 @@ export default {
   },
 
   mount(board, ctx) {
+    const localBot = payload => { const {action,oppBluff}=botWeights(payload); return {action:choiceAnswer(action),...(oppBluff == null ? {} : {opp_bluffing:noulAnswer(oppBluff)})}; };
+    const variant = ctx.settings.get('variant') || 'standard';
+    const generalized = variant === 'generalization';
+    const { FACES, START_DICE, rollDice, countFace, isLegalBid, minQty, bidProb, bucket,
+  makePayload, makeRawPayload, recordBids, resolveChallenge, botWeights } = createDice(variant);
     const { t, h, panel } = ctx;
-    const L = (k, v) => t(`liarsdice.${k}`, v);
+    const L = (k, v) => generalized && k==='wild' ? (ctx.settings.get('lang')==='zh' ? '无万能点' : 'No wild faces') : t(`liarsdice.${k}`, v);
     let alive = true;
     let gen = 0; // bumps on every new game so stale async continuations bail out
     const timers = new Set();
@@ -190,7 +196,7 @@ export default {
         // Most plausible opening: best face from your own dice, around its expected count.
         let best = { qty: 1, face: 2 };
         for (const face of FACES) {
-          const qty = Math.max(1, Math.min(total(), countFace(dice.you, face) + Math.floor(dice.jev.length / 3)));
+          const qty = Math.max(1, Math.min(total(), countFace(dice.you, face) + Math.floor(dice.jev.length / (generalized ? 6 : 3))));
           if (qty > best.qty || (qty === best.qty && face > best.face)) best = { qty, face };
         }
         return best;
@@ -319,7 +325,7 @@ export default {
       // Calibration: each human bid Jev judged — was it actually false (1s wild)?
       for (const c of bluffCal) track('cal', c.res, { ph: 'opp_bluffing', p: c.p, truth: countFace(all, c.bid.face) < c.bid.qty });
       bluffCal = [];
-      if (dice[loser].length - 1 <= 0) track('end', loser === 'jev' ? 'win' : 'lose');
+      if (dice[loser].length - 1 <= 0) track('end', loser === 'jev' ? 'win' : 'lose', [dice.you.length-(loser==='you'?1:0),dice.jev.length-(loser==='jev'?1:0)]);
       stats = recordBids(stats, bids, 'you', all);
       log.push({ bid: { ...bid }, caller: challenger, actual: count, loser, youDice: [...dice.you] });
       reveal = { bid, challenger, count, bidTrue, loser, shown: false, lostIdx: -1, calledAt: now(), at: 0 };
@@ -364,7 +370,7 @@ export default {
       if (!reveal) return order;
       let k = 0;
       for (const who of ['you', 'jev']) {
-        dice[who].forEach((d, i) => { if (d === 1 || d === reveal.bid.face) order.set(`${who}${i}`, k++); });
+        dice[who].forEach((d, i) => { if ((!generalized && d === 1) || d === reveal.bid.face) order.set(`${who}${i}`, k++); });
       }
       return order;
     }
@@ -388,7 +394,7 @@ export default {
         }
         if (r) {
           const k = order.get(`${who}${i}`);
-          dieCls = k == null ? 'ld-dim' : d === 1 ? 'ld-hl ld-hl-wild' : 'ld-hl';
+          dieCls = k == null ? 'ld-dim' : !generalized && d === 1 ? 'ld-hl ld-hl-wild' : 'ld-hl';
           dstyle['--hl-delay'] = since(T_COUNT + (k ?? 0) * T_STEP);
           if (who === 'jev') {
             slotCls += ' ld-spill';
@@ -464,12 +470,11 @@ export default {
     function tally(order) {
       const r = reveal;
       const all = [...dice.you, ...dice.jev];
-      const wilds = all.filter((d) => d === 1).length;
+      const wilds = generalized ? 0 : all.filter((d) => d === 1).length;
       const faces = all.filter((d) => d === r.bid.face).length;
       return h('div.ld-tally', { class: r.bidTrue ? 'ld-true' : 'ld-false', style: at(r.at, tallyAt(order.size)) },
         die(r.bid.face, 'ld-die-xs'), h('span.ld-tn', faces),
-        h('span.ld-op', '+'),
-        die(1, 'ld-die-xs'), h('span.ld-tn', wilds),
+        !generalized ? [h('span.ld-op', '+'), die(1, 'ld-die-xs'), h('span.ld-tn', wilds)] : null,
         h('span.ld-op', '='),
         h('b.ld-tsum', r.count),
         h('span.ld-tneed', L('tallyNeed', { q: r.bid.qty })),

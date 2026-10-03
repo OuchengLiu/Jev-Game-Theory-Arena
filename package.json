@@ -1,0 +1,23 @@
+{
+  "name": "jev-game-theory-arena",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "test:dom": "node tests/dom-suite.mjs",
+    "verify:db": "npm exec --yes --include=optional --package=wrangler@4.147.0 -- wrangler d1 migrations apply jev-lab-verification --local --config worker/verification/wrangler.toml --persist-to .verification/state",
+    "verify:worker": "npm exec --yes --include=optional --package=wrangler@4.147.0 -- wrangler dev --config worker/verification/wrangler.toml --port 8787 --persist-to .verification/state",
+    "verify:api": "node scripts/verify-api.mjs",
+    "verify:ui": "node scripts/verify-ui.mjs",
+    "build": "node scripts/build-site.mjs",
+    "release:backup": "npm exec --yes --include=optional --package=wrangler@4.147.0 -- wrangler d1 export jev-lab-data --remote --config worker/wrangler.toml --output .verification/before-release.sql",
+    "release:migrate": "npm exec --yes --include=optional --package=wrangler@4.147.0 -- wrangler d1 migrations apply jev-lab-data --remote --config worker/wrangler.toml",
+    "release:worker": "npm exec --yes --include=optional --package=wrangler@4.147.0 -- wrangler deploy --config worker/wrangler.toml"
+  },
+  "devDependencies": {
+    "jsdom": "30.1.1"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

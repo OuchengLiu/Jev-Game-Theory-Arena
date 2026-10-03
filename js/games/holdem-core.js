@@ -1,3 +1,9 @@
+import { CARDS } from '../../shared/schema.js';
+
+// Each ruleset has its own closure: no mutable cross-request rule state.
+export function createHoldem(variant = 'standard') {
+  if (!['standard', 'generalization'].includes(variant)) throw new Error('Unknown ruleset');
+  const generalized = variant === 'generalization';
 // Heads-up No-Limit Hold'em: pure game logic (no DOM, no browser globals).
 // Imported by js/games/holdem.js and unit-testable from Node.
 //
@@ -5,17 +11,16 @@
 // (rank 0 = '2' … 12 = 'A'; suit order s, h, d, c).
 // Players are 0 and 1. hand.stacks are chips behind; hand.total are chips put in this hand.
 
-import { CARDS } from '../../shared/schema.js';
 
-export const START_STACK = 200;
-export const SB = 1;
-export const BB = 2;
-export const STREETS = ['preflop', 'flop', 'turn', 'river'];
-export const CATS = ['high_card', 'pair', 'two_pair', 'trips', 'straight', 'flush', 'full_house', 'quads', 'straight_flush'];
+const START_STACK = 200;
+const SB = 1;
+const BB = 2;
+const STREETS = ['preflop', 'flop', 'turn', 'river'];
+const CATS = ['high_card', 'pair', 'two_pair', 'trips', 'straight', 'flush', 'full_house', 'quads', 'straight_flush'];
 
-export const rankOf = (c) => c >> 2;
-export const suitOf = (c) => c & 3;
-export const cardStr = (c) => CARDS[c];
+const rankOf = (c) => c >> 2;
+const suitOf = (c) => c & 3;
+const cardStr = (c) => CARDS[c];
 
 // ---------------- hand evaluator ----------------
 
@@ -39,7 +44,7 @@ function pack(cat, ks) {
 }
 
 /** Score any 1..7 cards; higher is better. Category = Math.floor(score / 16**5). */
-export function evaluate(cards) {
+function evaluate(cards) {
   const cnt = new Array(13).fill(0);
   const sMask = [0, 0, 0, 0];
   const sCnt = [0, 0, 0, 0];
@@ -77,17 +82,17 @@ export function evaluate(cards) {
   return pack(0, topBits(mask, 5, []));
 }
 
-export const category = (score) => Math.floor(score / 1048576); // 16**5
+const category = (score) => Math.floor(score / 1048576); // 16**5
 
 /** Name key for a score: one of CATS, plus 'royal_flush'. */
-export function handName(score) {
+function handName(score) {
   const cat = category(score);
   if (cat === 8 && Math.floor(score / 65536) % 16 === 13) return 'royal_flush';
   return CATS[cat];
 }
 
 /** The five cards (subset of `cards`) that make the best hand, e.g. to highlight at showdown. */
-export function bestFive(cards) {
+function bestFive(cards) {
   if (cards.length <= 5) return [...cards];
   const target = evaluate(cards);
   const n = cards.length;
@@ -105,9 +110,30 @@ export function bestFive(cards) {
   return rec(0) || cards.slice(0, 5);
 }
 
+
+function legalFive(hole, board) {
+  if (!generalized) return bestFive([...hole,...board]);
+  if (board.length < 4) return null;
+  let best=null, score=-Infinity;
+  for(const card of hole) {
+    for(let omit=0;omit<(board.length===5 ? 5 : 1);omit++) {
+      const four=board.length===5 ? board.filter((_,i)=>i!==omit) : board;
+      const five=[card,...four], value=evaluate(five);
+      if(value>score) {best=five;score=value;}
+    }
+  }
+  return best;
+}
+function evaluateHand(hole, board) {
+  if (!generalized) return evaluate([...hole,...board]);
+  const five=legalFive(hole,board);
+  if(!five) throw new Error('Four community cards required to rank a constrained hand');
+  return evaluate(five);
+}
+
 // ---------------- equity (Monte-Carlo vs a random hand) ----------------
 
-export function equity(hole, board, samples = 600, rng = Math.random) {
+function equity(hole, board, samples = 600, rng = Math.random) {
   const used = new Set([...hole, ...board]);
   const rest = [];
   for (let c = 0; c < 52; c++) if (!used.has(c)) rest.push(c);
@@ -121,8 +147,8 @@ export function equity(hole, board, samples = 600, rng = Math.random) {
       const tmp = rest[k]; rest[k] = rest[j]; rest[j] = tmp;
     }
     const extra = rest.slice(2, need);
-    const a = evaluate([...mine, ...extra]);
-    const b = evaluate([rest[0], rest[1], ...board, ...extra]);
+    const a = evaluateHand(hole, [...board,...extra]);
+    const b = evaluateHand([rest[0],rest[1]], [...board,...extra]);
     win += a > b ? 1 : a === b ? 0.5 : 0;
   }
   return win / samples;
@@ -130,19 +156,19 @@ export function equity(hole, board, samples = 600, rng = Math.random) {
 
 // ---------------- semantic descriptors (for Jev) ----------------
 
-export const EQUITY_BUCKETS = ['very_weak', 'weak', 'marginal', 'decent', 'strong', 'very_strong', 'monster'];
-export function equityBucket(e) {
+const EQUITY_BUCKETS = ['very_weak', 'weak', 'marginal', 'decent', 'strong', 'very_strong', 'monster'];
+function equityBucket(e) {
   return e < 0.3 ? 'very_weak' : e < 0.42 ? 'weak' : e < 0.5 ? 'marginal' : e < 0.58 ? 'decent'
     : e < 0.7 ? 'strong' : e < 0.85 ? 'very_strong' : 'monster';
 }
 
-export const PREFLOP_KINDS = ['pocket_pair_high', 'pocket_pair_mid', 'pocket_pair_low', 'two_broadway', 'ace_suited',
+const PREFLOP_KINDS = ['pocket_pair_high', 'pocket_pair_mid', 'pocket_pair_low', 'two_broadway', 'ace_suited',
   'ace_offsuit', 'suited_connector', 'suited', 'connector', 'weak'];
-export const POSTFLOP_KINDS = ['high_card', 'board_plays', 'pair_low', 'pair_middle', 'top_pair_weak_kicker',
+const POSTFLOP_KINDS = ['high_card', 'board_plays', 'pair_low', 'pair_middle', 'top_pair_weak_kicker',
   'top_pair_good_kicker', 'overpair', 'two_pair', 'set', 'trips', 'straight', 'flush', 'full_house', 'quads', 'straight_flush'];
-export const HAND_KINDS = [...PREFLOP_KINDS, ...POSTFLOP_KINDS];
+const HAND_KINDS = [...PREFLOP_KINDS, ...POSTFLOP_KINDS];
 
-export function preflopKind([a, b]) {
+function preflopKind([a, b]) {
   const hi = Math.max(rankOf(a), rankOf(b)), lo = Math.min(rankOf(a), rankOf(b));
   const suited = suitOf(a) === suitOf(b);
   const gap = hi - lo;
@@ -155,7 +181,7 @@ export function preflopKind([a, b]) {
   return 'weak';
 }
 
-export function postflopKind(hole, board) {
+function postflopKind(hole, board) {
   const all = [...hole, ...board];
   const sAll = evaluate(all), sBoard = evaluate(board);
   if (board.length === 5 && sAll === sBoard) return 'board_plays';
@@ -180,8 +206,8 @@ export function postflopKind(hole, board) {
   return 'high_card';
 }
 
-export const DRAWS = ['none', 'gutshot', 'open_ended', 'flush_draw', 'combo_draw'];
-export function drawKind(hole, board) {
+const DRAWS = ['none', 'gutshot', 'open_ended', 'flush_draw', 'combo_draw'];
+function drawKind(hole, board) {
   if (board.length < 3 || board.length > 4) return 'none';
   const all = [...hole, ...board];
   if (category(evaluate(all)) >= 4) return 'none';
@@ -216,7 +242,7 @@ export function drawKind(hole, board) {
 //     all-in raise does not reopen the betting for a player who has already acted
 //     (tracked by hand.raiseOk; heads-up the opponent of an all-in player can never raise anyway).
 
-export function shuffledDeck(rng = Math.random) {
+function shuffledDeck(rng = Math.random) {
   const d = Array.from({ length: 52 }, (_, i) => i);
   for (let i = 51; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
@@ -226,7 +252,7 @@ export function shuffledDeck(rng = Math.random) {
 }
 
 /** Start a hand. stacks: [p0, p1]; button posts the small blind and acts first preflop. */
-export function newHand(stacks, button, rng = Math.random) {
+function newHand(stacks, button, rng = Math.random) {
   const deck = shuffledDeck(rng);
   const hand = {
     stacks: [...stacks], total: [0, 0], contrib: [0, 0], button,
@@ -251,16 +277,16 @@ function post(hand, p, amt) {
   return a;
 }
 
-export const toCall = (hand, p = hand.toAct) => Math.max(0, hand.contrib[1 - p] - hand.contrib[p]);
-export const potSize = (hand) => hand.total[0] + hand.total[1];
-export const minIncrement = (hand) => Math.max(BB, hand.lastInc);
+const toCall = (hand, p = hand.toAct) => Math.max(0, hand.contrib[1 - p] - hand.contrib[p]);
+const potSize = (hand) => hand.total[0] + hand.total[1];
+const minIncrement = (hand) => Math.max(BB, hand.lastInc);
 
 /**
  * Legal bet/raise sizes for the player to act, as totals for this street, or null.
  * { kind: 'bet'|'raise', min, max (= all-in), eff (= the opponent's all-in; sizes >= eff are
  *   equivalent to max), cur (= the bet being faced) }
  */
-export function raiseRange(hand, p = hand.toAct) {
+function raiseRange(hand, p = hand.toAct) {
   if (hand.done) return null;
   const o = 1 - p;
   if (!hand.raiseOk[p] || hand.stacks[o] === 0 || hand.stacks[p] === 0) return null;
@@ -273,7 +299,7 @@ export function raiseRange(hand, p = hand.toAct) {
 }
 
 /** Basic legal action kinds: fold/check/call/bet/raise. */
-export function legalActions(hand) {
+function legalActions(hand) {
   if (hand.done) return [];
   const tc = toCall(hand);
   const r = raiseRange(hand);
@@ -282,7 +308,7 @@ export function legalActions(hand) {
 }
 
 /** Chips the player to act would add for an action (`to` = street total for bet/raise). */
-export function amountFor(hand, act, to = 0) {
+function amountFor(hand, act, to = 0) {
   const p = hand.toAct;
   if (act === 'call') return Math.min(toCall(hand, p), hand.stacks[p]);
   if (act === 'bet' || act === 'raise') return to - hand.contrib[p];
@@ -292,33 +318,33 @@ export function amountFor(hand, act, to = 0) {
 // ---------- discrete sizes (Jev's options; the human UI uses the same formulas for its chips) ----------
 
 /** Preflop: raise to k × the bet currently faced (the big blind when unraised). */
-export const PREFLOP_SIZES = [['r2x', 2], ['r3x', 3], ['r4x', 4]];
+const PREFLOP_SIZES = [['r2x', 2], ['r3x', 3], ['r4x', 4]];
 /** Postflop: bet f × pot, or raise by f × (pot after calling) — the standard "pot-sized raise". */
-export const POSTFLOP_SIZES = [['b33', 1 / 3], ['b50', 1 / 2], ['b75', 3 / 4], ['b100', 1], ['b200', 2]];
-export const SIZE_IDS = [...PREFLOP_SIZES.map((x) => x[0]), ...POSTFLOP_SIZES.map((x) => x[0]), 'allin'];
+const POSTFLOP_SIZES = [['b33', 1 / 3], ['b50', 1 / 2], ['b75', 3 / 4], ['b100', 1], ['b200', 2]];
+const SIZE_IDS = [...PREFLOP_SIZES.map((x) => x[0]), ...POSTFLOP_SIZES.map((x) => x[0]), 'allin'];
 
 /** Street total for a bet/raise of `frac` × pot (after calling), not clamped. */
-export function potFractionTo(hand, frac, p = hand.toAct) {
+function potFractionTo(hand, frac, p = hand.toAct) {
   const cur = hand.contrib[1 - p];
   return cur + frac * (potSize(hand) + toCall(hand, p));
 }
 
-export const clampTo = (r, x) => Math.min(r.max, Math.max(r.min, Math.round(x)));
+const clampTo = (r, x) => Math.min(r.max, Math.max(r.min, Math.round(x)));
 
-export const SIZE_WORDS = ['small', 'medium', 'large', 'overbet', 'allin'];
-export const FRACS = ['tiny', 'third', 'half', 'three_quarters', 'pot', 'one_and_half', 'double', 'more'];
+const SIZE_WORDS = ['small', 'medium', 'large', 'overbet', 'allin'];
+const FRACS = ['tiny', 'third', 'half', 'three_quarters', 'pot', 'one_and_half', 'double', 'more'];
 
 /** Raise increment relative to the pot after calling. */
 function potRatio(hand, to, p) {
   const cur = hand.contrib[1 - p];
   return (to - cur) / Math.max(1, potSize(hand) + toCall(hand, p));
 }
-export function fracBucket(ratio) {
+function fracBucket(ratio) {
   return ratio < 0.25 ? 'tiny' : ratio < 0.42 ? 'third' : ratio < 0.62 ? 'half' : ratio < 0.87 ? 'three_quarters'
     : ratio < 1.25 ? 'pot' : ratio < 1.75 ? 'one_and_half' : ratio < 2.5 ? 'double' : 'more';
 }
 /** Semantic size of a bet/raise to `to` by player p (call before applying it). */
-export function sizeWord(hand, to, p = hand.toAct) {
+function sizeWord(hand, to, p = hand.toAct) {
   const r = raiseRange(hand, p);
   if (r && to >= r.eff) return 'allin';
   if (hand.street === 0) {
@@ -335,7 +361,7 @@ export function sizeWord(hand, to, p = hand.toAct) {
  * to the same amount the one whose nominal size is closest is kept.
  * -> [{ id, to, add, size, frac }] in increasing order, 'allin' last.
  */
-export function sizeOptions(hand) {
+function sizeOptions(hand) {
   const r = raiseRange(hand);
   if (!r) return [];
   const p = hand.toAct;
@@ -355,7 +381,7 @@ export function sizeOptions(hand) {
 }
 
 /** Every option id Jev may choose now, with the concrete action it maps to. */
-export function jevOptions(hand) {
+function jevOptions(hand) {
   const out = [];
   const kind = raiseRange(hand)?.kind;
   for (const a of legalActions(hand)) if (a === 'fold' || a === 'check' || a === 'call') out.push({ id: a, act: a, to: 0 });
@@ -364,15 +390,15 @@ export function jevOptions(hand) {
 }
 
 /** Update opponent-profile stats for the player about to act (call BEFORE applyAction). */
-export function recordStats(stats, hand, act) {
+function recordStats(stats, hand, act) {
   const s = stats[hand.toAct];
   if (act === 'bet' || act === 'raise') s.agg++;
   else if (act === 'check' || act === 'call') s.pass++;
   if (toCall(hand) > 0) { s.faced++; if (act === 'fold') s.folds++; }
 }
-export const emptyStats = () => [{ agg: 0, pass: 0, faced: 0, folds: 0 }, { agg: 0, pass: 0, faced: 0, folds: 0 }];
+const emptyStats = () => [{ agg: 0, pass: 0, faced: 0, folds: 0 }, { agg: 0, pass: 0, faced: 0, folds: 0 }];
 
-export function applyAction(hand, act, to = 0) {
+function applyAction(hand, act, to = 0) {
   const legal = legalActions(hand);
   if (!legal.includes(act)) throw new Error(`illegal action ${act} (legal: ${legal.join(',')})`);
   const p = hand.toAct, o = 1 - p;
@@ -421,8 +447,8 @@ function runOut(hand) {
   if (hand.board.length < 5) hand.runoutFrom = hand.board.length; // all-in before the river
   while (hand.board.length < 5) hand.board.push(hand.deck.pop());
   hand.street = 3;
-  const s0 = evaluate([...hand.holes[0], ...hand.board]);
-  const s1 = evaluate([...hand.holes[1], ...hand.board]);
+  const s0 = evaluateHand(hand.holes[0],hand.board);
+  const s1 = evaluateHand(hand.holes[1],hand.board);
   return settle(hand, s0 > s1 ? 0 : s1 > s0 ? 1 : -1, [s0, s1]);
 }
 
@@ -459,24 +485,24 @@ function oppFoldToBet(s) {
   return r < 0.2 ? 'rarely' : r < 0.45 ? 'sometimes' : 'often';
 }
 
-export function potOddsBucket(tc, pot) {
+function potOddsBucket(tc, pot) {
   if (tc <= 0) return 'none';
   const need = tc / (pot + tc);
   return need < 0.2 ? 'great' : need < 0.28 ? 'good' : need < 0.36 ? 'fair' : 'poor';
 }
 
 /** Stack-to-pot ratio bucket (effective stack behind / pot). */
-export function sprBucket(eff, pot) {
+function sprBucket(eff, pot) {
   const x = eff / Math.max(1, pot);
   return x < 1 ? 'very_low' : x < 2.5 ? 'low' : x < 6 ? 'medium' : x < 13 ? 'high' : 'very_high';
 }
 
 // ---------------- raw payload (no code-computed evaluation at all) ----------------
 
-export const HAND_NAMES = [...CATS, 'royal_flush'];
+const HAND_NAMES = [...CATS, 'royal_flush'];
 
 /** Neutral record of a finished hand, kept by the UI for the raw payload's recent-hands list. */
-export function summarizeHand(hand, handNo) {
+function summarizeHand(hand, handNo) {
   const r = hand.result;
   return {
     handNo, winner: r.winner, pot: r.pot, showdown: r.showdown, street: hand.street, button: hand.button,
@@ -510,7 +536,7 @@ const RAW_ACT = { sb: 'small_blind', bb: 'big_blind' };
  * Raw payload validated by shared/games/holdem.js (raw.schema): only the literal record,
  * from player p's point of view (p must be the player to act). past: summarizeHand() records.
  */
-export function makeRawPayload(hand, p, past = [], handNo = 1) {
+function makeRawPayload(hand, p, past = [], handNo = 1) {
   const o = 1 - p;
   const legal = legalActions(hand).filter((a) => a === 'fold' || a === 'check' || a === 'call');
   return {
@@ -540,7 +566,7 @@ export function makeRawPayload(hand, p, past = [], handNo = 1) {
  * makeRawPayload) plus the code-computed buckets. p must be the player to act.
  * stats: emptyStats()-shaped session stats; we read the opponent's entry.
  */
-export function makePayload(hand, p, stats, past = [], handNo = 1, samples = 600, rng = Math.random) {
+function makePayload(hand, p, stats, past = [], handNo = 1, samples = 600, rng = Math.random) {
   const o = 1 - p;
   const raw = makeRawPayload(hand, p, past, handNo);
   const hole = hand.holes[p], board = hand.board;
@@ -551,8 +577,8 @@ export function makePayload(hand, p, stats, past = [], handNo = 1, samples = 600
   return {
     ...raw,
     options: sizeOptions(hand), // raw {id, to, add} + size word + pot fraction
-    hand: hand.street === 0 ? preflopKind(hole) : postflopKind(hole, board),
-    draw: drawKind(hole, board),
+    hand: generalized ? 'variant_equity' : hand.street === 0 ? preflopKind(hole) : postflopKind(hole, board),
+    draw: generalized ? 'variant_equity' : drawKind(hole, board),
     equity: equityBucket(e),
     pot_odds: potOddsBucket(toCall(hand, p), pot),
     opp_aggression: oppAggression(stats[o]),
@@ -599,7 +625,7 @@ function spread(opts, total, intent, pl, eq) {
   return w;
 }
 
-export function botPolicy(pl) {
+function botPolicy(pl) {
   const street = pl.street;
   const oppAggr = pl.action_sizes.filter((x) => x.actor === 'opp' && (x.act === 'bet' || x.act === 'raise'));
   const oppAggrStreet = oppAggr.filter((x) => x.street === street).length;
@@ -647,3 +673,9 @@ export function botPolicy(pl) {
   const bluff = clamp(0.25 + profAdj * 3 + (oppAggrStreet ? 0.05 : -0.1), 0.03, 0.9);
   return { action: out, opp_bluffing: bluff, ahead: clamp(eq, 0.02, 0.98) };
 }
+
+return { legalFive, evaluateHand, START_STACK, SB, BB, STREETS, CATS, rankOf, suitOf, cardStr, evaluate, category, handName, bestFive, equity, EQUITY_BUCKETS, equityBucket, PREFLOP_KINDS, POSTFLOP_KINDS, HAND_KINDS, preflopKind, postflopKind, DRAWS, drawKind, shuffledDeck, newHand, toCall, potSize, minIncrement, raiseRange, legalActions, amountFor, PREFLOP_SIZES, POSTFLOP_SIZES, SIZE_IDS, potFractionTo, clampTo, SIZE_WORDS, FRACS, fracBucket, sizeWord, sizeOptions, jevOptions, recordStats, emptyStats, applyAction, potOddsBucket, sprBucket, HAND_NAMES, summarizeHand, makeRawPayload, makePayload, botPolicy };
+}
+
+const standard = createHoldem();
+export const { START_STACK, SB, BB, STREETS, CATS, rankOf, suitOf, cardStr, evaluate, category, handName, bestFive, equity, EQUITY_BUCKETS, equityBucket, PREFLOP_KINDS, POSTFLOP_KINDS, HAND_KINDS, preflopKind, postflopKind, DRAWS, drawKind, shuffledDeck, newHand, toCall, potSize, minIncrement, raiseRange, legalActions, amountFor, PREFLOP_SIZES, POSTFLOP_SIZES, SIZE_IDS, potFractionTo, clampTo, SIZE_WORDS, FRACS, fracBucket, sizeWord, sizeOptions, jevOptions, recordStats, emptyStats, applyAction, potOddsBucket, sprBucket, HAND_NAMES, summarizeHand, makeRawPayload, makePayload, botPolicy } = standard;

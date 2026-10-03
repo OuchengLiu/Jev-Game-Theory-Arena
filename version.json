@@ -1,12 +1,16 @@
 {
-  "version": "1.2.8",
-  "date": "2026-09-27",
+  "version": "2.0.3",
+  "date": "2026-10-03",
   "notes": {
-    "en": [
-      "Small updates"
-    ],
     "zh": [
-      "细节更新"
+      "补回已核实兼容的常规练习机器人历史，全部版本继续保留其他练习记录。",
+      "数据洞察手机按钮等宽、可换行，触控区域至少44像素。",
+      "对比模式明确显示固定版本，返回浏览时保留原版本选择。"
+    ],
+    "en": [
+      "Restore audited compatible practice-bot history; All versions retains other practice records.",
+      "Mobile insights controls use equal-width options, wrapping labels and 44px touch targets.",
+      "Comparison shows its fixed version clearly and preserves the previous overview selection."
     ]
   }
 }

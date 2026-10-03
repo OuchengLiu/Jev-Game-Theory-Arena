@@ -11,6 +11,7 @@ import {
   potFractionTo, clampTo, recordStats, emptyStats, makePayload, makeRawPayload, summarizeHand, bestFive, botPolicy,
   rankOf, suitOf, equity, evaluate,
 } from './holdem-core.js';
+import { createHoldem } from './holdem-core.js';
 
 const HUMAN = 0, JEV = 1;
 const RECENT = 6; // finished hands remembered for Jev's record (both modes)
@@ -119,7 +120,7 @@ const HAND_NAMES = {
 
 export default {
   id: 'holdem',
-  meta: { icon: '♠︎', accent: '#6366f1', minutes: 8, version: '2.3' },
+  meta: { icon: '♠︎', accent: '#6366f1', minutes: 8, version: '2.0' },
   strings: {
     en: {
       title: 'Heads-up No-Limit Hold’em',
@@ -202,6 +203,11 @@ export default {
   },
 
   mount(board, ctx) {
+    const variant = ctx.settings.get('variant') || 'standard';
+    const generalized = variant === 'generalization';
+    const { START_STACK, STREETS, newHand, legalActions, amountFor, applyAction, toCall, potSize, raiseRange, jevOptions,
+  potFractionTo, clampTo, recordStats, emptyStats, makePayload, makeRawPayload, summarizeHand, bestFive, botPolicy,
+  rankOf, suitOf, equity, evaluate, legalFive, evaluateHand } = createHoldem(variant);
     const { t, h, panel } = ctx;
     const T = (k, v) => t(`holdem.${k}`, v);
     const lang = () => (t('holdem.mono') === '你' ? 'zh' : 'en');
@@ -298,7 +304,7 @@ export default {
           hand.recorded = true;
           stacks = [...hand.stacks];
           over = stacks[HUMAN] === 0 || stacks[JEV] === 0;
-          if (over) track('end', stacks[HUMAN] > 0 ? 'win' : 'lose');
+          if (over) track('end', stacks[HUMAN] > 0 ? 'win' : 'lose', [stacks[HUMAN],stacks[1-HUMAN]]);
           past.push(summarizeHand(hand, handNo));
           if (past.length > RECENT) past.shift();
           results.push({ n: handNo, winner: hand.result.winner, pot: hand.result.pot, showdown: hand.result.showdown });
@@ -393,8 +399,8 @@ export default {
       const pAhead = res.answers?.ahead?.noul;
       if (typeof pAhead === 'number') {
         try {
-          const mine = evaluate([...cur.holes[JEV], ...cur.board]);
-          const theirs = evaluate([...cur.holes[HUMAN], ...cur.board]);
+          const mine = evaluateHand(cur.holes[JEV],cur.board);
+          const theirs = evaluateHand(cur.holes[HUMAN],cur.board);
           if (mine !== theirs) track('cal', res, { ph: 'ahead', p: pAhead, truth: mine > theirs });
         } catch { /* ignore */ }
       }
@@ -469,7 +475,7 @@ export default {
       if (!hand.done || !r.showdown || revealing()) return null;
       const set = new Set();
       for (const p of r.winner === -1 ? [HUMAN, JEV] : [r.winner]) {
-        for (const c of bestFive([...hand.holes[p], ...hand.board])) set.add(c);
+        for (const c of legalFive(hand.holes[p],hand.board) || []) set.add(c);
       }
       return set;
     }

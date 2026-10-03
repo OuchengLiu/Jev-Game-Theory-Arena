@@ -1,3 +1,9 @@
+import { S, CARDS, cardName, SchemaError } from '../schema.js';
+
+// Each ruleset has its own closure: no mutable cross-request rule state.
+export function createHoldemPrompt(variant = 'standard') {
+  if (!['standard', 'generalization'].includes(variant)) throw new Error('Unknown ruleset');
+  const generalized = variant === 'generalization';
 // Heads-up No-Limit Texas Hold'em — Jev plays one seat.
 // Jev chooses among discrete sizes (so a Choice question works): fold / check / call, and
 // preflop r2x / r3x / r4x (raise to 2, 3 or 4 times the bet faced), postflop b33 / b50 / b75 /
@@ -14,7 +20,6 @@
 //            (price to call; size in big blinds / fraction of the pot).
 //   All maths is done in the browser (js/games/holdem-core.js); the hinted payload is the
 //   raw record + those analysis fields (enums only).
-import { S, CARDS, cardName, SchemaError } from '../schema.js';
 
 const STREET = S.enumv('preflop', 'flop', 'turn', 'river');
 const ACT = S.enumv('fold', 'check', 'call', 'bet', 'raise');
@@ -40,6 +45,7 @@ const FRAC_TEXT = {
 };
 
 const HAND_TEXT = {
+  variant_equity: 'Use the separately computed showdown equity; ordinary two-hole-card hand labels do not apply to this variant.',
   // preflop
   pocket_pair_high: 'A high pocket pair (tens or better)',
   pocket_pair_mid: 'A medium pocket pair (sixes to nines)',
@@ -69,9 +75,10 @@ const HAND_TEXT = {
   straight_flush: 'A straight flush',
 };
 const HAND_KINDS = Object.keys(HAND_TEXT);
-const PREFLOP_KINDS = HAND_KINDS.slice(0, 10);
+const PREFLOP_KINDS = HAND_KINDS.filter(k=>k!=='variant_equity').slice(0, 10);
 
 const DRAW_TEXT = {
+  variant_equity: 'Draws are accounted for in the constrained showdown equity estimate.',
   none: 'No draw',
   gutshot: 'Gutshot straight draw (only one card rank completes a straight)',
   open_ended: 'Open-ended straight draw (two card ranks complete a straight)',
@@ -345,7 +352,7 @@ function base(p, checked = validateRaw(p)) {
     criteria[o.id] = `${verb}: put in ${chips(o.add)}${kind === 'bet' ? '' : ' more'}${tail}.`;
   }
   const state = {
-    game: "Heads-up No-Limit Texas Hold'em: you against one opponent, many hands in a row. Both players started the match with 200 chips. Blinds 1 and 2. A bet must be at least 2 chips; a raise must increase the bet by at least the previous bet or raise; a bet or raise may go up to all of your chips (chips the opponent cannot match are returned). If a player is all-in and called, the remaining cards are dealt with no more betting. Best five of seven cards wins at showdown.",
+    game: `Heads-up No-Limit Texas Hold'em: you against one opponent, many hands in a row. Both players started the match with 200 chips. Blinds 1 and 2. A bet must be at least 2 chips; a raise must increase the bet by at least the previous bet or raise; a bet or raise may go up to all of your chips (chips the opponent cannot match are returned). If a player is all-in and called, the remaining cards are dealt with no more betting. ${generalized ? 'At showdown you MUST use exactly ONE of your two hole cards and exactly FOUR of the five community cards. You cannot play the board or both hole cards. Normal five-card hand ranking applies.' : 'Best five of seven cards wins at showdown.'}`,
     goal: "Win as many of the opponent's chips as possible; the match ends when one player has none left.",
     hand: `Hand ${p.hand_no} of the match.`,
     street: RAW_STREET[p.street],
@@ -409,7 +416,7 @@ function hinted(p) {
   raw.options = p.options.map(({ id, to, add }) => ({ id, to, add }));
   const checked = validateRaw(raw);
   const { legal, kind } = checked;
-  if ((p.street === 'preflop') !== PREFLOP_KINDS.includes(p.hand)) bad('hand kind does not match street');
+  if (!generalized && (p.street === 'preflop') !== PREFLOP_KINDS.includes(p.hand)) bad('hand kind does not match street');
   if (p.pot_odds === 'none' ? legal.includes('call') : !legal.includes('call')) bad('pot odds do not match legal actions');
   if (p.options.some((o) => (o.id === 'allin') !== (o.size === 'allin'))) bad('size word does not match option');
 
@@ -433,4 +440,10 @@ function hinted(p) {
   return req;
 }
 
-export default { schema: HINTED_SCHEMA, build: hinted, raw: { schema: RAW_SCHEMA, build: base } };
+const prompt = { schema: HINTED_SCHEMA, build: hinted, raw: { schema: RAW_SCHEMA, build: base } };
+
+return { prompt };
+}
+
+const standard = createHoldemPrompt();
+export default standard.prompt;

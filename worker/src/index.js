@@ -22,10 +22,11 @@
 import { buildJevRequest, SchemaError } from '../../shared/prompts.js';
 import { logEvents, getStats } from './data.js';
 export { Guard } from './guard.js';
+export { ExperimentAllocator } from './allocator.js';
+import { availableModels } from './models.js';
+import { runDecision } from './decision-provider.js';
 
-const TYPESAFE_URL = 'https://api.typesafe.ai/v1/systemone';
-const WORKERS_AI_MODEL = 'typesafe/jev';
-const MAX_BODY_BYTES = 8 * 1024;
+const MAX_BODY_BYTES = 64 * 1024;
 const SESSION_TTL_S = 30 * 60;
 
 export default {
@@ -58,7 +59,7 @@ export default {
     // public, cached aggregate statistics for the insights page
     if (request.method === 'GET' && url.pathname === '/stats') return getStats(env, ctx, cors, request.headers.get('CF-Connecting-IP'));
     if (request.method !== 'POST') return json(405, { error: 'forbidden' });
-    if (!['/decide', '/session', '/log'].includes(url.pathname)) return json(404, { error: 'forbidden' });
+    if (!['/decide', '/session', '/log', '/assignment'].includes(url.pathname)) return json(404, { error: 'forbidden' });
 
     const ip = await hashIp(request.headers.get('CF-Connecting-IP') || 'unknown');
     const guard = env.GUARD ? env.GUARD.get(env.GUARD.idFromName('global')) : null;
@@ -89,6 +90,12 @@ export default {
       return v.ok ? json(400, { error: 'bad_request' }) : refuse(v);
     }
 
+    if (url.pathname === '/assignment') {
+      if (!env.EXPERIMENTS || !env.DB) return json(503,{error:'assignment_unavailable'});
+      const r=await env.EXPERIMENTS.get(env.EXPERIMENTS.idFromName('v2')).fetch('https://allocator/',{method:'POST',body:JSON.stringify(body)});
+      return json(r.status,await r.json());
+    }
+
     // ---- Turnstile → session exchange ----
     if (url.pathname === '/session') {
       if (!env.TURNSTILE_SECRET) return json(404, { error: 'forbidden' });
@@ -103,17 +110,22 @@ export default {
       if (!ok) return json(401, { error: 'session_required' });
     }
 
+    // Old clients have different action semantics; do not mix them into v2 or punish them as abuse.
+    if(body?.experiment!=='2') return json(409,{error:'update_required',retryAfter:30});
+
     // ---- validate + build prompt server-side (invalid requests count towards a block) ----
     let jevRequest;
     try {
       if (typeof body?.game !== 'string') throw new SchemaError('game missing');
-      jevRequest = buildJevRequest(body.game, body.payload, body.mode ?? 'hinted');
+      jevRequest = buildJevRequest(body.game, body.payload, body.mode ?? 'hinted', body.variant ?? 'standard');
+      if (!['jev','luna'].includes(body.opponent ?? 'jev')) throw new SchemaError('unknown opponent');
     } catch (e) {
       const v = await askGuard('invalid');
       if (!v.ok) return refuse(v);
       return json(400, { error: 'bad_request', detail: env.DEBUG === '1' && e instanceof SchemaError ? e.message : undefined });
     }
 
+    if (!availableModels(env).includes(body.opponent ?? 'jev')) return json(503,{error:'not_configured',retryAfter:600});
     const provider = env.TYPESAFE_API_KEY ? 'typesafe' : env.AI ? 'workers-ai' : null;
     if (!provider) return json(503, { error: 'not_configured', retryAfter: 600 });
 
@@ -121,55 +133,17 @@ export default {
     const verdict = await askGuard('consume');
     if (!verdict.ok) return refuse(verdict);
 
-    // ---- call Jev: Cloudflare Workers AI (typesafe/jev) or TypeSafe's own API ----
-    if (provider === 'workers-ai') {
-      try {
-        const run = env.AI.run(WORKERS_AI_MODEL, { state: jevRequest.state, questions: jevRequest.questions });
-        const raw = await Promise.race([run, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout after 8s')), 8000))]);
-        const out = unwrapAi(raw);
-        if (!out?.answers) throw new Error(`unexpected response: ${JSON.stringify(raw)?.slice(0, 120)}`);
-        return json(200, { model: out.model || WORKERS_AI_MODEL, answers: out.answers });
-      } catch (e) {
-        const msg = String(e?.message || e);
-        console.log('workers-ai failure', msg);
-        // capacity / rate errors → busy; everything else → unavailable
-        // `detail` (provider message) is only returned when the DEBUG var is "1", for diagnosing setup problems
-        const detail = env.DEBUG === '1' ? msg.replace(/[^\x20-\x7e]/g, '').slice(0, 160) : undefined;
-        if (/credit|billing|payment|2021/i.test(msg)) return json(503, { error: 'not_configured', retryAfter: 600, detail });
-        if (/capacity|rate|limit|429|3040|neuron/i.test(msg)) return json(503, { error: 'upstream_busy', retryAfter: 60, detail });
-        return json(502, { error: 'unavailable', retryAfter: 30, detail });
-      }
-    }
     try {
-      const res = await fetch(TYPESAFE_URL, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${env.TYPESAFE_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(jevRequest),
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!res.ok) {
-        console.log('upstream error', res.status, await res.text().catch(() => ''));
-        if (res.status === 429) return json(503, { error: 'upstream_busy', retryAfter: 60 });
-        if (res.status === 401 || res.status === 403) return json(503, { error: 'not_configured', retryAfter: 600 });
-        return json(502, { error: 'unavailable', retryAfter: 30 });
-      }
-      const data = await res.json();
-      return json(200, { model: data.model, answers: data.answers });
+      return json(200, await runDecision(body.opponent ?? 'jev', env, jevRequest));
     } catch (e) {
-      console.log('upstream failure', e?.message);
-      return json(504, { error: 'unavailable', retryAfter: 30 });
+      console.log('decision provider failure', e.message);
+      const detail=env.DEBUG==='1' ? String(e.message).replace(/[^\x20-\x7e]/g,'').slice(0,160) : undefined;
+      return json(e.status || 502,{error:e.code || 'unavailable',retryAfter:e.retryAfter || 30,detail});
     }
   },
 };
 
 // ---------------- helpers ----------------
-
-// Workers AI may return the evaluation directly or wrapped ({ result: {...} } / { state, result }).
-function unwrapAi(r) {
-  let out = r;
-  for (let i = 0; i < 3 && out && !out.answers && typeof out === 'object'; i++) out = out.result ?? out.response ?? null;
-  return out;
-}
 
 // Visitors are tracked by a salted hash of their IP, never the raw address.
 async function hashIp(ip) {

@@ -27,7 +27,7 @@ const dict = {
     'mode.info.title': 'How Jev plays',
     'mode.info.hinted': 'The game works out the numbers first (hand strength, odds, patterns in your play) and gives Jev a short summary. Jev decides with that help, like a player with a coach.',
     'mode.info.raw': 'Jev gets only what happened: every move so far, the scores and the options it has, with no calculations. Pure intuition, which can make it more human and easier to exploit.',
-    'mode.info.note': 'Each visit is randomly assigned an opponent mode (Raw 75%, Hinted 25%) and a move choice (Top pick 75%, By odds 25%); you can switch either one at any time.',
+    'mode.info.note': 'Assignments adapt to completed games: Raw : Hinted and Standard : Rule variant both target 3:1. Move choice is random (Top pick 75%, By odds 25%). Manual selections are analysed separately.',
     'status.offline': 'Jev isn’t connected yet, so Practice mode only for now',
     'think.title': 'Jev’s read',
     'think.title.local': 'Practice bot',
@@ -113,9 +113,9 @@ const dict = {
     'about.method.1t': 'What Jev sees',
     'about.method.1': 'Every decision is one request to Jev, in English: the rules, the current situation (its own cards or dice, the board, scores, stacks), the full record of earlier rounds, and the legal moves. In Hinted mode the request is identical plus one block of facts computed by the game code (odds, hand strength, your tendencies). No strategy advice is given in either mode.',
     'about.method.2t': 'How a move is chosen',
-    'about.method.2': 'Jev returns a probability for every legal move. How the move is then chosen is the second switch, also assigned at random on each visit: Top pick always plays Jev’s highest-rated move (the same position always gets the same move, like a language model at temperature 0), while By odds draws the move in proportion to Jev’s probabilities. Jev’s full probabilities are recorded either way. Two games involve the code as well: in Rock-Paper-Scissors, Jev predicts your throw and the code plays the hand that beats it (Top pick: the counter to its top prediction; By odds: drawn from its prediction); in Colonel Blotto’s Hinted mode, the code first shortlists up to 16 splits for Jev to choose from.',
+    'about.method.2': 'Jev directly selects a legal action in every game. Top pick chooses the highest probability; By odds samples the distribution. Raw and Hinted share identical actions, rules and visible information; Hinted additionally receives computed analysis. Predictions are recorded separately and never determine the action.',
     'about.method.3t': 'Fair play',
-    'about.method.3': 'In games with hidden cards or dice, Jev’s odds stay sealed until the hand or round ends, and all odds are blurred by default (tap the eye to show them). On every visit the opponent mode is assigned at random (Raw 75%, Hinted 25%), and so is the move choice (Top pick 75%, By odds 25%), so every version of Jev gets played.',
+    'about.method.3': 'Hidden cards, dice and simultaneous moves remain private. Model odds are sealed until the round ends. Assignments adapt per game toward Raw:Hinted 3:1 and Standard:Rule variant 3:1. Manual selections and practice games are analysed separately.',
     'about.method.4t': 'The practice bot',
     'about.method.4': 'Practice mode uses simple built-in algorithms instead of Jev: Monte-Carlo hand strength in poker, dice probabilities in Liar’s Dice, pattern counting in Rock-Paper-Scissors, a forgiving tit-for-tat in the Prisoner’s Dilemma. It also stands in, clearly marked, whenever Jev is busy or unavailable.',
     'about.games.t': 'The games',
@@ -149,7 +149,7 @@ const dict = {
     'mode.info.title': 'Jev 怎么玩',
     'mode.info.hinted': '游戏先把数算好（牌力、概率、你的出招规律），整理成简短的提示交给 Jev，它在这些帮助下做决定，就像一个有教练在旁边的玩家。',
     'mode.info.raw': 'Jev 只拿到发生过的事：之前的每一步、双方比分、当前可选的动作，没有任何计算结果。全凭直觉，因此打法可能更像人，也更容易被你抓住破绽。',
-    'mode.info.note': '每次访问都会随机分配对手模式（直觉 75%，提示 25%）和出招方式（取最高 75%，按概率 25%），两者都可以随时切换。',
+    'mode.info.note': '按已完成数据动态分配，目标为直觉:提示 3:1、常规:泛化性 3:1。出招方式独立随机分配（取最高 75%，按概率 25%）。手动切换的数据单独统计。',
     'status.offline': 'Jev 尚未接入，目前只能玩练习模式',
     'think.title': 'Jev 的判断',
     'think.title.local': '练习机器人',
@@ -235,9 +235,9 @@ const dict = {
     'about.method.1t': 'Jev 看到了什么',
     'about.method.1': '每一次决策都是发给 Jev 的一次请求（英文）：规则、当前局面（它自己的牌或骰子、公共牌、比分、筹码）、之前每一轮的完整记录，以及这一步的合法动作。提示模式的请求与此完全相同，只额外附上一块由游戏代码计算的客观信息（概率、牌力、你的出招倾向等）。两种模式都不包含任何策略建议。',
     'about.method.2t': '如何出招',
-    'about.method.2': 'Jev 为每个合法动作给出一个概率。怎么据此出招，是第二个开关，同样在每次访问时随机分配：“取最高”总是出 Jev 概率最高的那一招（同样的局面永远出同样的招，相当于语言模型温度为 0）；“按概率”则按 Jev 给出的概率按比例抽取。无论哪种方式，Jev 给出的完整概率都会被记录下来。有两个游戏由代码参与：石头剪刀布里，Jev 负责预测你出什么，代码据此出克制的那一手（取最高：克制它最看好的那一手；按概率：按它的预测抽取）；布洛托上校的提示模式里，代码会先筛出最多 16 种候选分配，再由 Jev 选择。',
+    'about.method.2': '所有游戏都由 Jev 直接选择合法动作。“取最高”选择概率最高的一招，“按概率”按分布抽取。直觉与提示模式的动作集合、规则和可见信息一致；提示模式额外获得计算分析。预测问题单独记录，不决定模型的出招。',
     'about.method.3t': '公平性',
-    'about.method.3': '有底牌或暗骰的游戏里，Jev 的概率会封存到这一手或这一轮结束后才公开；所有概率默认模糊遮住，点小眼睛才显示。每次访问时，对手模式随机分配（直觉 75%，提示 25%），出招方式也随机分配（取最高 75%，按概率 25%），保证每种 Jev 都会被玩到。',
+    'about.method.3': '双方未公开的牌、骰子与同时出招保持私密，模型概率在本轮结束后才公开。系统按每个游戏动态调整分配，目标为直觉:提示 3:1、常规:泛化性 3:1；手动选择和练习对局单独统计。',
     'about.method.4t': '练习机器人',
     'about.method.4': '练习模式不用 Jev，而是简单的内置算法：德州用蒙特卡洛模拟牌力，吹牛骰子用骰子概率，石头剪刀布统计出拳规律，囚徒困境用宽容版“以牙还牙”。Jev 忙碌或不可用时，它也会临时顶替，并在界面上注明。',
     'about.games.t': '游戏',
@@ -276,3 +276,8 @@ export function t(key, vars) {
 
 // Global strings that name the opponent (not Jev itself).
 const OPP_KEYS = new Set(['result.lose', 'think.waiting']);
+
+registerStrings('experiment', {
+ en: {rules:'Rules',standard:'Standard',generalization:'Rule variant',fair:'Both sides play by the same rules. Hidden moves stay private.',adaptive:'Assigned using the current data balance.',manual:'Manually selected · analysed separately.',offline:'Random assignment · balancing unavailable.',loading:'Preparing your game…'},
+ zh: {rules:'规则',standard:'常规',generalization:'泛化性',fair:'双方遵循相同规则，未公开的出招和私有信息互不可见。',adaptive:'根据当前数据分布分配。',manual:'手动选择 · 数据单独统计。',offline:'随机分配 · 动态分配暂不可用。',loading:'正在准备对局…'}
+});

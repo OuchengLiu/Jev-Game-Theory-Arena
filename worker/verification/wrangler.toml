@@ -1,0 +1,61 @@
+# Local verification only. Never deploy this config. AI calls are real and billable.
+name = "jev-game-theory-verification"
+main = "../src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+ALLOWED_ORIGINS = "http://localhost:8000,http://127.0.0.1:8000"
+DAILY_LIMIT = "20000"
+IP_DAILY_LIMIT = "600"
+MAX_INVALID = "20"
+BLOCK_HOURS = "24"
+DEBUG = "1"
+
+[ai]
+binding = "AI"
+remote = true
+
+
+[[ratelimits]]
+name = "BURST_LIMITER"
+namespace_id = "1001"
+  [ratelimits.simple]
+  limit = 15
+  period = 10
+
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1002"
+  [ratelimits.simple]
+  limit = 60
+  period = 60
+
+[[ratelimits]]
+name = "LOG_LIMITER"
+namespace_id = "1003"
+  [ratelimits.simple]
+  limit = 20
+  period = 60
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jev-lab-verification"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "../migrations"
+remote = false
+
+[[durable_objects.bindings]]
+name = "GUARD"
+class_name = "Guard"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Guard"]
+
+[[durable_objects.bindings]]
+name = "EXPERIMENTS"
+class_name = "ExperimentAllocator"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ExperimentAllocator"]

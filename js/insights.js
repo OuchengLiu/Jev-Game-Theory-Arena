@@ -2,9 +2,12 @@
 // Data: GET <proxy>/stats (pre-aggregated counts, cached 5 min). Only real games are counted;
 // a game with no records yet shows empty charts.
 
+import { comparisonView } from './insights-compare.js';
+import { insightRows } from './insights-data.js';
 import { t, registerStrings } from './i18n.js';
 import { settings } from './settings.js';
 import { CONFIG } from './config.js';
+import { VERSION } from './version.js';
 import { h, segmented } from './ui.js';
 import { groupedBars, lineChart, statTile } from './charts.js';
 import { gameIcon } from './icons.js';
@@ -22,7 +25,7 @@ registerStrings('ins', {
     series_human: 'Humans', 'series_jev-hinted': 'Jev · Hinted', 'series_jev-raw': 'Jev · Raw', series_bot: 'Practice bot',
     table: 'Table', chart: 'Chart',
     version: 'Version', v_latest: 'Current', v_all: 'All versions',
-    v_latest_note: 'Showing each game’s current version only.', v_all_note: 'Includes earlier game versions, whose prompts differed.',
+    v_latest_note: 'Current gameplay, including audited compatible history. Compatible rules/actions do not imply identical prompts or model releases; use Compare for current-experiment comparisons.', v_all_note: 'Includes historical standard games and new records. Rules and prompts may differ across versions; this view describes overall play, not a controlled model comparison.',
     low: 'small sample', low_note: 'Faded marks are based on fewer than {n} records; * marks a small-sample rate.',
     pd_chart: 'Cooperation rate by round', pd_note: 'Share of players who cooperated in each round. Watch for end-game defection in the last rounds.',
     rps_chart: 'Throw mix', rps_note: 'The Nash equilibrium is exactly 1/3 each. Any tilt away from it can be exploited.',
@@ -61,7 +64,7 @@ registerStrings('ins', {
     series_human: '人类', 'series_jev-hinted': 'Jev · 提示模式', 'series_jev-raw': 'Jev · 直觉模式', series_bot: '练习机器人',
     table: '表格', chart: '图表',
     version: '版本', v_latest: '当前版本', v_all: '全部版本',
-    v_latest_note: '只显示各游戏当前版本的数据。', v_all_note: '包含旧版本的数据，旧版本的提示词与现在不同。',
+    v_latest_note: '展示当前玩法及已核实兼容的历史记录。玩法兼容不代表提示词或模型版本相同；模型对照请使用“对比”。', v_all_note: '包含常规历史对局和新记录；跨版本规则、提示词可能不同，此视图用于浏览整体情况，不代表严格的模型对照实验。',
     low: '样本较少', low_note: '浅色的柱子和点背后不足 {n} 条记录；数字后的 * 表示样本较少。',
     pd_chart: '各回合的合作率', pd_note: '每一回合选择合作的比例。留意最后几回合的“终局背叛”。',
     rps_chart: '出拳分布', rps_note: '纳什均衡恰好是各 1/3，任何偏离都可能被针对。',
@@ -108,16 +111,16 @@ const oppOfMode = { hinted: 'jev-hinted', raw: 'jev-raw', practice: 'bot' };
 async function loadStats() {
   if (!CONFIG.proxyUrl) return null;
   try {
-    const r = await fetch(CONFIG.proxyUrl.replace(/\/decide\/?$/, '/stats'));
+    const r = await fetch(CONFIG.proxyUrl.replace(/\/decide\/?$/, '/stats') + '?v=' + VERSION);
     const j = await r.json();
     if (!j.enabled) return null;
     const rows = j.rows.map((a) => Object.fromEntries(j.cols.map((c, i) => [c, a[i]])));
-    return { rows, updated: j.updated };
+    return { ...j, rows };
   } catch { return null; }
 }
 
 // ---------- page ----------
-export function insightsPage(footer) {
+export function insightsPage(footer, games = []) {
   const lang = settings.get('lang');
   const page = h('main.page.insights');
   const body = h('div.ins-body', h('div.ins-loading', h('span.dot'), h('span.dot'), h('span.dot')));
@@ -129,23 +132,26 @@ export function insightsPage(footer) {
   );
   // Jev's two play policies are analysed separately, never mixed. Rows from before policies
   // existed were all played "by odds".
-  let policy = 'greedy';
-  let version = 'latest';
-  const cmpVer = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; };
+  let policy = 'greedy', version = 'all', variant = 'standard', assistance='raw';
+  const currentVersions=Object.fromEntries(games.map(g=>[g.id,g.meta.version]));
   const draw = (data) => {
-    const latest = {};
-    for (const r of data.rows) if (!latest[r.game] || cmpVer(r.game_ver, latest[r.game]) > 0) latest[r.game] = r.game_ver;
-    // practice rows and bot moves carry no meaningful policy; rows without one predate policies ('sample')
-    const rows = data.rows.filter((r) => (r.mode === 'practice' || r.actor === 'bot' || (r.policy || 'sample') === policy)
-      && (version === 'all' || r.game_ver === latest[r.game]));
+    const comparing=variant==='compare';
+    const rows=comparing?[]:insightRows(data,{variant,version,policy,currentVersions});
+    const legacyMatches=rows.filter(r=>r.experiment==='1' && r.kind==='end').reduce((s,r)=>s+r.n,0);
+    const group=(label,values,current,change)=>{
+      const buttons=segmented(values,current,v=>{change(v);draw(data);});
+      buttons.setAttribute('role','group');buttons.setAttribute('aria-label',label);
+      [...buttons.children].forEach((button,i)=>button.setAttribute('aria-pressed',String(values[i].value===current)));
+      return h('div.control',h('span.control-label',label),buttons);
+    };
     body.replaceChildren(
-      h('div.ins-filter',
-        h('span', t('policy.label')),
-        segmented([{ value: 'greedy', label: t('policy.greedy') }, { value: 'sample', label: t('policy.sample') }], policy, (v) => { policy = v; draw(data); }),
-        h('span', t('ins.version')),
-        segmented([{ value: 'latest', label: t('ins.v_latest') }, { value: 'all', label: t('ins.v_all') }], version, (v) => { version = v; draw(data); }),
-        h('small.muted', t(`policy.info.${policy}`), ' ', t(version === 'latest' ? 'ins.v_latest_note' : 'ins.v_all_note'))),
-      ...render({ ...data, rows }, lang));
+      h('div.ins-filter.ins-filter-bar',
+        comparing?h('div.control.ins-version-fixed',h('span.control-label',t('ins.version')),h('span.badge',t('ins.v_latest')),h('small.muted',lang==='zh'?'对比仅使用当前实验':'Compare uses the current experiment')):group(t('ins.version'),[{value:'latest',label:t('ins.v_latest')},{value:'all',label:t('ins.v_all')}],version,v=>version=v),
+        group(t('policy.label'),[{value:'greedy',label:t('policy.greedy')},{value:'sample',label:t('policy.sample')}],policy,v=>policy=v),
+        group(t('experiment.rules'),[{value:'standard',label:t('experiment.standard')},{value:'generalization',label:t('experiment.generalization')},{value:'compare',label:lang==='zh'?'对比':'Compare'}],variant,v=>variant=v),
+        comparing?group(lang==='zh'?'分析模式':'Assistance',[{value:'raw',label:t('mode.raw')},{value:'hinted',label:t('mode.hinted')}],assistance,v=>assistance=v):null),
+      !comparing?h('p.ins-filter-note.muted',t(version==='latest'?'ins.v_latest_note':'ins.v_all_note'),version==='latest'&&legacyMatches? (lang==='zh'?` 已纳入 ${legacyMatches} 局玩法兼容历史；原版本标识保留。`:` Includes ${legacyMatches} gameplay-compatible historical matches with original version labels retained.`):''):null,
+      ...(comparing?comparisonView(data,lang,{mode:assistance,policy,currentVersions}):render({...data,rows,variant},lang)));
   };
   loadStats().then((data) => {
     if (data) draw(data);
@@ -177,6 +183,11 @@ function render(data, lang) {
     ...['raw', 'hinted'].map((m) => { const d = winRate(m); return statTile(t('ins.humanWin'), fmtWin(d), t('ins.vs', { opp: oppName(m) })); }),
   ));
 
+  const practiceMatches=sum(r=>r.kind==='end' && r.mode==='practice');
+  const botMoves=sum(r=>r.kind==='move' && r.actor==='bot');
+  if(practiceMatches || botMoves)out.push(h('p.ins-filter-note.muted',lang==='zh'
+    ? `包含练习对局 ${practiceMatches} 局、机器人出招 ${botMoves} 次；图表以“练习机器人”单独展示，不进入模型对比。`
+    : `Includes ${practiceMatches} practice matches and ${botMoves} bot moves. Practice bot charts remain separate and are excluded from model comparisons.`));
   out.push(calibrationSection(rows, series, labels));
 
   for (const g of ['holdem', 'liarsdice', 'blotto', 'pd', 'rps', 'ultimatum']) {
@@ -192,7 +203,7 @@ function render(data, lang) {
 
     if (g === 'pd') {
       const xs = Array.from({ length: 10 }, (_, i) => ({ key: `r${i + 1}`, label: String(i + 1) }));
-      charts.push(lineChart({ title: t('ins.pd_chart'), note: t('ins.pd_note'), xs, series: present, labels, minN: 1,
+      charts.push(lineChart({ title: t('ins.pd_chart'), note: data.variant==='generalization' ? (lang==='zh'?'协作博弈中，各回合选择合作的比例。':'Cooperation by round in the coordination game.') : t('ins.pd_note'), xs, series: present, labels, minN: 1,
         value: (x, se) => rate(bySeries(se, (r) => r.phase === x.key && r.act === 'C'), bySeries(se, (r) => r.phase === x.key)) }));
     }
     if (g === 'pd') {
@@ -223,14 +234,14 @@ function render(data, lang) {
       charts.push(groupedBars({ title: t('ins.ug_offer'), note: t('ins.ug_offer_note'), cats, series: prop, labels,
         value: (c, se) => rate(bySeries(se, (r) => r.act === c.key), bySeries(se, (r) => /^o\d+$/.test(r.act))) }));
       const xs = Array.from({ length: 11 }, (_, o) => ({ key: String(o), label: String(o) }));
-      charts.push(lineChart({ title: t('ins.ug_accept'), note: t('ins.ug_accept_note'), xs, series: present, labels, minN: 1,
+      charts.push(lineChart({ title: t('ins.ug_accept'), note: data.variant==='generalization' ? (lang==='zh'?'拒绝可得2枚金币；比较不同出价下的接受率。':'Rejection earns 2 coins; compare acceptance across offers.') : t('ins.ug_accept_note'), xs, series: present, labels, minN: 1,
         value: (x, se) => rate(bySeries(se, (r) => r.act === 'accept' && r.detail === x.key), bySeries(se, (r) => (r.act === 'accept' || r.act === 'reject') && r.detail === x.key)) }));
     }
     if (g === 'blotto') {
       const totals = {};
       gr.filter((r) => seriesOf(r)).forEach((r) => { totals[r.act] = (totals[r.act] || 0) + r.n; });
       const cats = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k]) => ({ key: k, label: k.replace(/-/g, '·') }));
-      charts.push(groupedBars({ title: t('ins.bl_chart'), note: t('ins.bl_note'), cats, series: present, labels,
+      charts.push(groupedBars({ title: t('ins.bl_chart'), note: data.variant==='generalization' ? (lang==='zh'?'数字依次对应平原、隘口、要塞、港口，保留地域顺序。':'Numbers follow Plain, Pass, Fort, Port; territory order is preserved.') : t('ins.bl_note'), cats, series: present, labels,
         value: (c, se) => rate(bySeries(se, (r) => r.act === c.key), bySeries(se, (r) => r.kind === 'move')) }));
     }
     if (g === 'liarsdice') {

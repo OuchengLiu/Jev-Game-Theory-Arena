@@ -12,7 +12,8 @@ const browserLang = () => {
 
 const defaults = {
   lang: browserLang(),
-  theme: 'auto',            // auto | light | dark
+  theme: 'auto',
+  opponent: 'jev', variant: 'standard', assignmentSource: 'offline', assignmentId: '', experiment: '2',            // auto | light | dark
   jevMode: 'hinted',        // hinted: code computes odds for Jev | raw: Jev sees only the raw record | practice: no Jev
   share: true,              // anonymous gameplay statistics (opt-out)
   research: false,          // also allow use in research publications (opt-in)
@@ -51,13 +52,17 @@ function safeParse(s) {
 
 export const settings = {
   get: (k) => state[k],
+  useAssignment(a) {
+    state={...state,opponent:a.opponent,jevMode:a.mode,variant:a.variant,policy:a.policy,assignmentSource:a.source,assignmentId:a.id,experiment:'2',modelStatus:a.models};
+  },
   set(k, v) {
     if (state[k] === v) return;
     state = { ...state, [k]: v };
+    if (['jevMode','opponent','variant','policy'].includes(k)) state.assignmentSource='manual';
     try {
       if (k === 'jevMode') sessionStorage.setItem(SESSION_MODE, v);
       if (k === 'policy') sessionStorage.setItem(SESSION_POLICY, v);
-      const { jevMode, policy, ...persist } = state; // both are per visit, not remembered across visits
+      const { jevMode, policy, opponent, variant, assignmentSource, assignmentId, experiment, modelStatus, ...persist } = state; // both are per visit, not remembered across visits
       localStorage.setItem(KEY, JSON.stringify(persist));
     } catch { /* storage blocked: settings last for this visit only */ }
     listeners.forEach((fn) => fn(k, v));
