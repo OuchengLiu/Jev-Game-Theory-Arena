@@ -19,7 +19,8 @@ globalThis.fetch=async(url,init={})=>{
   try{const req=buildJevRequest(data.game,data.payload,data.mode,data.variant);requests.push(data);return Response.json({model:'typesafe/jev',answers:Object.fromEntries(Object.entries(req.questions).map(([k,q])=>[k,q.type==='noul'?{type:'noul',noul:.5}:{type:'choice',choice:Object.keys(q.criteria)[0],probabilities:Object.fromEntries(Object.keys(q.criteria).map((x,i,ks)=>[x,i===0?1:0]))}]))});}catch(e){console.error('Invalid request',data.game,data.variant,data.payload.street,data.payload.hand);errors.push(e);return Response.json({error:'bad_request'},{status:400});}
  }
  if(path==='/log'){try{checkBatch(data);logs.push(data);}catch(e){errors.push(e);}return Response.json({ok:true});}
- if(path==='/stats')return Response.json({enabled:true,cols:['game','game_ver','kind','mode','policy','act','n'],rows:[['pd','1.0','end','raw','greedy','win',5]],
+ if(path==='/stats')return Response.json({enabled:true,cols:['game','game_ver','kind','mode','policy','act','n'],rows:[['pd','1.4','end','raw','greedy','win',5]],
+  comparisons:['standard','generalization'].map((variant,i)=>({game:'pd',game_ver:'2.0',mode:'raw',variant,policy:'greedy',model:'typesafe/jev',n:i?7:2,players:1,unidentified_matches:0,model_wins:i?4:1,human_wins:i?2:1,draws:i?1:0,human_score:2,opponent_score:3,human_score_n:i?7:2,opponent_score_n:i?7:2})),
   models:{jev:{available:true,label:'Jev'}},
   matches:['standard','generalization'].map((variant,i)=>({game:'pd',opponent:'jev',mode:'raw',variant,policy:'greedy',assignment_source:'adaptive',mixed:0,n:i?7:2,human_wins:1,draws:0,human_score:2,opponent_score:3})),
   modern:['standard','generalization'].flatMap((variant,i)=>[{game:'pd',game_ver:'2.0',opponent:'jev',variant,policy:'greedy',assignment_source:'adaptive',kind:'move',actor:'human',mode:'raw',phase:'r1',act:'C',detail:'',n:3},{game:'pd',game_ver:'2.0',opponent:'jev',variant,policy:'greedy',assignment_source:'manual',kind:'end',mode:'raw',act:'win',detail:'',n:i?7:2}]),updated:new Date().toISOString()});
@@ -80,9 +81,17 @@ assert.ok(document.querySelector('.ins-body .viz-svg'));
 const tableToggle=document.querySelector('.ins-body .viz-toggle');tableToggle.click();
 assert.ok(document.querySelector('.ins-body .viz-table'));tableToggle.click();
 [...document.querySelectorAll('.ins-filter button')].find(b=>b.textContent==='Current').click();
-assert.equal(document.querySelector('.ins-body .stats .stat b').textContent,'2');
+assert.equal(document.querySelector('.ins-body .stats .stat b').textContent,'7','Current gameplay includes audited 1.4 history');
 [...document.querySelectorAll('.ins-filter button')].find(b=>b.textContent==='Rule variant').click();
 assert.equal(document.querySelector('.ins-body .stats .stat b').textContent,'7','Variant data never includes legacy standard games');
+[...document.querySelectorAll('.ins-filter button')].find(b=>b.textContent==='Compare').click();
+assert.ok(document.querySelector('.ins-compare-pair'));
+assert.equal(document.querySelectorAll('.ins-body .ins-game').length,6);
+assert.ok(document.querySelector('.ins-body').textContent.includes('Anonymous players'));
+assert.ok([...document.querySelectorAll('.ins-filter button')].find(b=>b.textContent==='All versions').disabled);
+const comparisonTable=document.querySelector('.ins-body .viz-toggle');comparisonTable.click();assert.ok(document.querySelector('.ins-body .viz-table'));
+[...document.querySelectorAll('.ins-filter button')].find(b=>b.textContent==='Hinted').click();
+assert.equal(document.querySelectorAll('.ins-compare-pair').length,0,'Never reuse raw observations in hinted comparison');
 assert.equal(document.querySelectorAll('.variant-note').length,0);
 if(errors.length)console.error(errors.map(e=>e.stack));
 for(const game of ['pd','rps','ultimatum','blotto','liarsdice','holdem'])assert.ok(requests.some(r=>r.game===game),`No decision exercised for ${game}`);

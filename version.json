@@ -1,16 +1,16 @@
 {
-  "version": "2.0.1",
+  "version": "2.0.2",
   "date": "2026-10-03",
   "notes": {
     "zh": [
-      "数据洞察回归统一面板：当前版本 / 全部版本。",
-      "普通规则的历史对局与新记录在全部版本中连续展示；移除分配来源入口。",
-      "调整筛选按钮间距及手机布局。"
+      "当前版本纳入已核实的玩法兼容历史，并保留原版本标识。",
+      "新增常规 / 泛化对比，按分析模式、出招策略和实际模型版本隔离。",
+      "新增完整局数、匿名玩家数、胜率、平局率及双方平均收益；统一沿用原版图表样式。"
     ],
     "en": [
-      "One insights panel with Current version / All versions.",
-      "Standard historical games and new records appear together under All versions; assignment-source controls removed.",
-      "Improved filter spacing and mobile layout."
+      "Current gameplay includes audited compatible history with original version labels preserved.",
+      "Compare standard and variant rules by assistance, policy and actual model release.",
+      "Show completed matches, distinct anonymous players, outcome rates and mean payoffs in the original chart style."
     ]
   }
 }

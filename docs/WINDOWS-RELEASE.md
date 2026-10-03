@@ -71,3 +71,18 @@ npx.cmd wrangler tail --config worker/wrangler.toml
 官方命令参考：
 - https://developers.cloudflare.com/workers/wrangler/commands/d1/
 - https://developers.cloudflare.com/workers/wrangler/commands/pages/
+
+## 已上线项目更新至 2.0.2（数据兼容与对比）
+
+本次不改变游戏玩法、不新增数据库迁移；需要更新Worker的汇总接口，再发布前端。根目录执行：
+
+```powershell
+git switch feat/fair-generalization-experiments
+git pull --ff-only origin feat/fair-generalization-experiments
+npm.cmd test
+npm.cmd run release:worker
+npm.cmd run build
+npx.cmd wrangler pages deploy dist --project-name jev-game-theory-arena --branch main
+```
+
+生产分支仍需与Cloudflare配置一致。发布后刷新数据洞察：当前版本应注明纳入的玩法兼容历史；点击“对比”可切换直觉/提示。没有符合条件的新实验完整对局时，显示空态是正确行为，不会拿历史数据填充对照。控制台中“匿名玩家”按浏览器编号计数，不是实名自然人数。

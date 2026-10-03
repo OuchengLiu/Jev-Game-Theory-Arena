@@ -75,7 +75,7 @@ export async function getStats(env, ctx, cors, ipRaw) {
   }
   if (!env.DB) return new Response(JSON.stringify({ enabled: false, terms: TERMS }), { headers });
   const cache = globalThis.caches?.default;
-  const cacheKey = new Request('https://stats.cache/v6');
+  const cacheKey = new Request('https://stats.cache/v7');
   const hit = cache && await cache.match(cacheKey);
   let body = hit ? await hit.text() : null;
   if (!body) {
@@ -83,8 +83,26 @@ export async function getStats(env, ctx, cors, ipRaw) {
       'SELECT game, game_ver, mode, policy, actor, model, kind, phase, act, detail, n FROM agg WHERE n > 0').all();
     const modern=await env.DB.prepare('SELECT * FROM agg_v2 WHERE n>0').all();
     const matches=await env.DB.prepare('SELECT game,opponent,mode,variant,policy,assignment_source,mixed,COUNT(*) n,SUM(result =  CHAR(119,105,110)) human_wins,SUM(result = CHAR(100,114,97,119)) draws,AVG(human_score) human_score,AVG(opponent_score) opponent_score FROM experiment_matches WHERE experiment = ? GROUP BY game,opponent,mode,variant,policy,assignment_source,mixed').bind('2').all();
+    // Aggregate completed, automatically assigned v2 matches only. No player IDs leave the Worker.
+    // The first end event supplies version/player metadata; repeated end events cannot multiply counts.
+    const comparisons=await env.DB.prepare(`WITH first_end AS (
+      SELECT match_id,MIN(id) id FROM events WHERE experiment='2' AND kind='end' GROUP BY match_id
+    ), model_per_match AS (
+      SELECT match_id,MIN(model) model,COUNT(DISTINCT model) model_count FROM events
+      WHERE experiment='2' AND actor='jev' AND model<>'' GROUP BY match_id
+    ) SELECT m.game,e.game_ver,m.mode,m.variant,m.policy,mm.model,
+      COUNT(*) n,COUNT(DISTINCT e.player_id) players,
+      SUM(e.player_id IS NULL) unidentified_matches,
+      SUM(m.result='lose') model_wins,SUM(m.result='win') human_wins,SUM(m.result='draw') draws,
+      AVG(m.human_score) human_score,AVG(m.opponent_score) opponent_score,
+      COUNT(m.human_score) human_score_n,COUNT(m.opponent_score) opponent_score_n
+    FROM experiment_matches m JOIN first_end f ON f.match_id=m.match_id JOIN events e ON e.id=f.id
+    JOIN model_per_match mm ON mm.match_id=m.match_id AND mm.model_count=1
+    WHERE m.experiment='2' AND m.mixed=0 AND m.assignment_source='adaptive' AND m.opponent='jev'
+      AND m.mode IN ('raw','hinted')
+    GROUP BY m.game,e.game_ver,m.mode,m.variant,m.policy,mm.model`).all();
     body = JSON.stringify({
-      experiment:'2', models:MODEL_STATUS, modern:modern.results, matches:matches.results,
+      experiment:'2', models:MODEL_STATUS, modern:modern.results, matches:matches.results, comparisons:comparisons.results,
       enabled: true,
       terms: TERMS,
       updated: new Date().toISOString(),

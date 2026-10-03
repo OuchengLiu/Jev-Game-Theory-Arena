@@ -599,3 +599,10 @@ button { font: inherit; color: inherit; }
 .ins-filter-bar .control { min-width:0; }
 .ins-filter-note { font-size:13px; line-height:1.6; margin:0 0 28px; max-width:860px; }
 @media(max-width:560px) { .ins-filter-bar { gap:16px; } .ins-filter-bar .control { width:100%; } }
+
+.ins-compare-pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; margin:16px 0; }
+.ins-compare-pair h3 { font-size:15px; margin:0 0 12px; }
+.ins-compare-pair .stats { margin:0; grid-template-columns:repeat(2,minmax(0,1fr)); }
+.ins-compare-delta { grid-template-columns:minmax(0,1fr); }
+.ins-compare-pair p { font-size:13px; line-height:1.6; }
+@media(max-width:640px) { .ins-compare-pair { grid-template-columns:1fr; gap:16px; } }

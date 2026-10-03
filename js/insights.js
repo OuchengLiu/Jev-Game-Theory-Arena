@@ -2,10 +2,12 @@
 // Data: GET <proxy>/stats (pre-aggregated counts, cached 5 min). Only real games are counted;
 // a game with no records yet shows empty charts.
 
+import { comparisonView } from './insights-compare.js';
 import { insightRows } from './insights-data.js';
 import { t, registerStrings } from './i18n.js';
 import { settings } from './settings.js';
 import { CONFIG } from './config.js';
+import { VERSION } from './version.js';
 import { h, segmented } from './ui.js';
 import { groupedBars, lineChart, statTile } from './charts.js';
 import { gameIcon } from './icons.js';
@@ -23,7 +25,7 @@ registerStrings('ins', {
     series_human: 'Humans', 'series_jev-hinted': 'Jev · Hinted', 'series_jev-raw': 'Jev · Raw', series_bot: 'Practice bot',
     table: 'Table', chart: 'Chart',
     version: 'Version', v_latest: 'Current', v_all: 'All versions',
-    v_latest_note: 'Showing each game’s current version only.', v_all_note: 'Includes historical standard games and new records. Rules and prompts may differ across versions; this view describes overall play, not a controlled model comparison.',
+    v_latest_note: 'Current gameplay, including audited compatible history. Compatible rules/actions do not imply identical prompts or model releases; use Compare for current-experiment comparisons.', v_all_note: 'Includes historical standard games and new records. Rules and prompts may differ across versions; this view describes overall play, not a controlled model comparison.',
     low: 'small sample', low_note: 'Faded marks are based on fewer than {n} records; * marks a small-sample rate.',
     pd_chart: 'Cooperation rate by round', pd_note: 'Share of players who cooperated in each round. Watch for end-game defection in the last rounds.',
     rps_chart: 'Throw mix', rps_note: 'The Nash equilibrium is exactly 1/3 each. Any tilt away from it can be exploited.',
@@ -62,7 +64,7 @@ registerStrings('ins', {
     series_human: '人类', 'series_jev-hinted': 'Jev · 提示模式', 'series_jev-raw': 'Jev · 直觉模式', series_bot: '练习机器人',
     table: '表格', chart: '图表',
     version: '版本', v_latest: '当前版本', v_all: '全部版本',
-    v_latest_note: '只显示各游戏当前版本的数据。', v_all_note: '包含常规历史对局和新记录；跨版本规则、提示词可能不同，此视图用于浏览整体情况，不代表严格的模型对照实验。',
+    v_latest_note: '展示当前玩法及已核实兼容的历史记录。玩法兼容不代表提示词或模型版本相同；模型对照请使用“对比”。', v_all_note: '包含常规历史对局和新记录；跨版本规则、提示词可能不同，此视图用于浏览整体情况，不代表严格的模型对照实验。',
     low: '样本较少', low_note: '浅色的柱子和点背后不足 {n} 条记录；数字后的 * 表示样本较少。',
     pd_chart: '各回合的合作率', pd_note: '每一回合选择合作的比例。留意最后几回合的“终局背叛”。',
     rps_chart: '出拳分布', rps_note: '纳什均衡恰好是各 1/3，任何偏离都可能被针对。',
@@ -109,7 +111,7 @@ const oppOfMode = { hinted: 'jev-hinted', raw: 'jev-raw', practice: 'bot' };
 async function loadStats() {
   if (!CONFIG.proxyUrl) return null;
   try {
-    const r = await fetch(CONFIG.proxyUrl.replace(/\/decide\/?$/, '/stats'));
+    const r = await fetch(CONFIG.proxyUrl.replace(/\/decide\/?$/, '/stats') + '?v=' + VERSION);
     const j = await r.json();
     if (!j.enabled) return null;
     const rows = j.rows.map((a) => Object.fromEntries(j.cols.map((c, i) => [c, a[i]])));
@@ -130,19 +132,22 @@ export function insightsPage(footer, games = []) {
   );
   // Jev's two play policies are analysed separately, never mixed. Rows from before policies
   // existed were all played "by odds".
-  let policy = 'greedy', version = 'all', variant = 'standard';
+  let policy = 'greedy', version = 'all', variant = 'standard', assistance='raw';
   const currentVersions=Object.fromEntries(games.map(g=>[g.id,g.meta.version]));
   const draw = (data) => {
-    const rows=insightRows(data,{variant,version,policy,currentVersions});
+    const comparing=variant==='compare';
+    const rows=comparing?[]:insightRows(data,{variant,version,policy,currentVersions});
+    const legacyMatches=rows.filter(r=>r.experiment==='1' && r.kind==='end').reduce((s,r)=>s+r.n,0);
     const group=(label,values,current,change)=>h('div.control',
       h('span.control-label',label),segmented(values,current,v=>{change(v);draw(data);}));
     body.replaceChildren(
       h('div.ins-filter.ins-filter-bar',
-        group(t('ins.version'),[{value:'latest',label:t('ins.v_latest')},{value:'all',label:t('ins.v_all')}],version,v=>version=v),
+        group(t('ins.version'),[{value:'latest',label:t('ins.v_latest'),disabled:comparing},{value:'all',label:t('ins.v_all'),disabled:comparing}],version,v=>version=v),
         group(t('policy.label'),[{value:'greedy',label:t('policy.greedy')},{value:'sample',label:t('policy.sample')}],policy,v=>policy=v),
-        group(t('experiment.rules'),[{value:'standard',label:t('experiment.standard')},{value:'generalization',label:t('experiment.generalization')}],variant,v=>variant=v)),
-      h('p.ins-filter-note.muted',t(version==='latest'?'ins.v_latest_note':'ins.v_all_note')),
-      ...render({...data,rows,variant},lang));
+        group(t('experiment.rules'),[{value:'standard',label:t('experiment.standard')},{value:'generalization',label:t('experiment.generalization')},{value:'compare',label:lang==='zh'?'对比':'Compare'}],variant,v=>{variant=v;if(v==='compare')version='latest';}),
+        comparing?group(lang==='zh'?'分析模式':'Assistance',[{value:'raw',label:t('mode.raw')},{value:'hinted',label:t('mode.hinted')}],assistance,v=>assistance=v):null),
+      !comparing?h('p.ins-filter-note.muted',t(version==='latest'?'ins.v_latest_note':'ins.v_all_note'),version==='latest'&&legacyMatches? (lang==='zh'?` 已纳入 ${legacyMatches} 局玩法兼容历史；原版本标识保留。`:` Includes ${legacyMatches} gameplay-compatible historical matches with original version labels retained.`):''):null,
+      ...(comparing?comparisonView(data,lang,{mode:assistance,policy,currentVersions}):render({...data,rows,variant},lang)));
   };
   loadStats().then((data) => {
     if (data) draw(data);
