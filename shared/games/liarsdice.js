@@ -1,3 +1,9 @@
+import { S, SchemaError } from '../schema.js';
+
+// Each ruleset has its own closure: no mutable cross-request rule state.
+export function createDicePrompt(variant = 'standard') {
+  if (!['standard', 'generalization'].includes(variant)) throw new Error('Unknown ruleset');
+  const generalized = variant === 'generalization';
 // Liar's Dice (heads-up) — Jev plays one side.
 //
 // Clean ablation (see shared/prompts.js):
@@ -11,16 +17,15 @@
 //   payload is the raw record + opp_style / current_likelihood / per-option likelihood.
 // Both modes use the same candidate option set (same ids 'challenge', 'b0'..'b9') and the
 // main question id 'action'.
-import { S, SchemaError } from '../schema.js';
 
 const LIKELIHOOD = S.enumv('certain', 'very_likely', 'likely', 'coin_flip', 'unlikely', 'very_unlikely', 'impossible');
-const OPTION_IDS = ['challenge', ...Array.from({ length: 10 }, (_, i) => `b${i}`)];
+const OPTION_IDS = ['challenge', ...Array.from({ length: 60 }, (_, i) => `b${i}`)];
 const QTY = S.int(1, 10);
-const FACE = S.int(2, 6); // 1s are wild and cannot be bid
+const FACE = S.int(generalized ? 1 : 2, 6); // 1s are wild and cannot be bid
 const WHO = S.enumv('jev', 'opp');
 const DIE = S.int(1, 6);
 
-const FACE_NAME = { 2: 'twos', 3: 'threes', 4: 'fours', 5: 'fives', 6: 'sixes' };
+const FACE_NAME = { 1: 'ones', 2: 'twos', 3: 'threes', 4: 'fours', 5: 'fives', 6: 'sixes' };
 const LIKELY_WORDS = {
   certain: 'certainly true (your own dice already make it true)',
   very_likely: 'very likely true',
@@ -39,7 +44,7 @@ const STYLE_WORDS = {
 
 const RULES = [
   "A bid claims that, across BOTH players' dice combined, at least a certain number of dice show a certain face.",
-  '1s are wild: they count as every face. Nobody bids on 1s, so bids are on faces 2 to 6.',
+  generalized ? 'No wild faces: 1 only counts as 1. Bids may name any face from 1 through 6.' : '1s are wild: they count as every face. Nobody bids on 1s, so bids are on faces 2 to 6.',
   'Each new bid must be higher: more dice, or the same number of dice with a higher face.',
   "Instead of bidding you may call Liar on the opponent's bid. All dice are revealed. If the bid is true the caller loses a die; if false the bidder loses a die.",
   'The player who lost a die opens the next round. A player with no dice left loses the match.',
@@ -56,7 +61,7 @@ const RAW_FIELDS = {
   opp_dice_count: S.int(1, 5),
   // Every bid of this round in order; the last one (if any) is the opponent's current bid.
   // A strictly rising sequence over 10 dice x 5 faces has at most 50 bids.
-  bids: S.list(BID, 50),
+  bids: S.list(BID, 60),
   // Earlier rounds of this match (a match has at most 9 rounds).
   past_rounds: S.list(S.obj({
     bid: BID,                       // the bid that was challenged
@@ -68,11 +73,11 @@ const RAW_FIELDS = {
 };
 const RAW_OPTION = { id: S.enumv(OPTION_IDS), qty: S.optional(QTY), face: S.optional(FACE) };
 
-const RAW_SCHEMA = S.obj({ ...RAW_FIELDS, options: S.list(S.obj(RAW_OPTION), 11) });
+const RAW_SCHEMA = S.obj({ ...RAW_FIELDS, options: S.list(S.obj(RAW_OPTION), 61) });
 // Hinted payload = the raw record + code-computed likelihood / style buckets.
 const HINTED_SCHEMA = S.obj({
   ...RAW_FIELDS,
-  options: S.list(S.obj({ ...RAW_OPTION, likelihood: S.optional(LIKELIHOOD) }), 11),
+  options: S.list(S.obj({ ...RAW_OPTION, likelihood: S.optional(LIKELIHOOD) }), 61),
   opp_style: S.enumv(Object.keys(STYLE_WORDS)),
   current_likelihood: S.optional(LIKELIHOOD), // required iff there is a current bid
 });
@@ -108,6 +113,10 @@ function validate({ jev_dice, opp_dice_count, bids, past_rounds, options }, hint
       if (o.qty > total || (current && !isHigher(o, current))) throw new SchemaError('payload.options: illegal bid');
     }
   }
+  const expected=[];
+  for(let qty=1;qty<=total;qty++) for(let face=generalized ? 1 : 2;face<=6;face++) if(!current || isHigher({qty,face},current)) expected.push({qty,face});
+  const raises=options.filter(o=>o.id!=='challenge');
+  if (raises.length!==expected.length || expected.some((b,i)=>raises[i].id!==`b${i}` || raises[i].qty!==b.qty || raises[i].face!==b.face) || options.some(o=>o.id==='challenge')!==!!current) throw new SchemaError('payload.options: must contain every legal action in neutral order');
   return current;
 }
 
@@ -126,7 +135,7 @@ function base(p) {
     rules: RULES,
     goal: 'Win the match: make the opponent lose all their dice before you lose yours.',
     round: `Round ${past_rounds.length + 1} of the match.`,
-    your_dice: `${dice.join(', ')}${dice.includes(1) ? ' (1s are wild)' : ''}`,
+    your_dice: `${dice.join(', ')}${!generalized && dice.includes(1) ? ' (1s are wild)' : ''}`,
     dice_count: `You have ${mine} ${diceWord(mine)}. The opponent has ${opp_dice_count} hidden ${diceWord(opp_dice_count)}. ${total} dice in total.`,
     bids_this_round: bids.length
       ? bids.map((b, i) => `${i + 1}. ${who(b.by)} bid ${bidText(b.qty, b.face)}.`)
@@ -136,7 +145,7 @@ function base(p) {
       : 'No bid yet: you open this round.',
     previous_rounds: past_rounds.length
       ? past_rounds.map((r, i) => `Round ${i + 1}: ${who(r.called_by)} called Liar on ${whose(r.bid.by)} bid of ${bidText(r.bid.qty, r.bid.face)}. `
-        + `The dice showed ${r.actual} ${FACE_NAME[r.bid.face]} (1s included). ${who(r.loser)} lost a die. `
+        + `The dice showed ${r.actual} ${FACE_NAME[r.bid.face]} (${generalized ? 'no wild dice' : '1s included'}). ${who(r.loser)} lost a die. `
         + `The opponent's revealed dice were ${r.opp_dice.join(', ')}.`)
       : ['This is the first round of the match.'],
   };
@@ -158,7 +167,7 @@ function base(p) {
   if (current) {
     questions.opp_bluffing = {
       type: 'noul',
-      instructions: `Is the opponent's current bid (${bidText(current.qty, current.face)}) a bluff, meaning fewer dice actually show ${FACE_NAME[current.face]} (counting 1s) than they claim?`,
+      instructions: `Is the opponent's current bid (${bidText(current.qty, current.face)}) a bluff, meaning fewer dice actually show ${FACE_NAME[current.face]} (${generalized ? 'no wild dice' : 'counting 1s'}) than they claim?`,
     };
   }
   return { state, questions };
@@ -174,7 +183,7 @@ function hinted(p) {
     past_rounds: p.past_rounds,
     options: p.options.map(({ id, qty, face }) => ({ id, qty, face })),
   });
-  const count = (face) => p.jev_dice.filter((d) => d === face || d === 1).length;
+  const count = (face) => p.jev_dice.filter((d) => d === face || (!generalized && d === 1)).length;
   const mine = p.jev_dice.length;
   req.state.analysis = {
     opponent_style: STYLE_WORDS[p.opp_style],
@@ -187,13 +196,19 @@ function hinted(p) {
   for (const o of p.options) {
     crit[o.id] += o.id === 'challenge'
       ? ` Analysis: you hold ${matchText(count(current.face))}; judging only from your own dice, their bid is ${LIKELY_WORDS[p.current_likelihood]}.`
-      : ` Analysis: you hold ${matchText(count(o.face))} (1s count as ${FACE_NAME[o.face]}); judging only from your own dice, this bid is ${LIKELY_WORDS[o.likelihood]}.`;
+      : ` Analysis: you hold ${matchText(count(o.face))} (${generalized ? 'no wild dice' : `1s count as ${FACE_NAME[o.face]}`}); judging only from your own dice, this bid is ${LIKELY_WORDS[o.likelihood]}.`;
   }
   return req;
 }
 
-export default {
+const prompt = {
   schema: HINTED_SCHEMA,
   build: hinted,
   raw: { schema: RAW_SCHEMA, build: base },
 };
+
+return { prompt };
+}
+
+const standard = createDicePrompt();
+export default standard.prompt;

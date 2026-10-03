@@ -1,3 +1,9 @@
+import { S, SchemaError } from '../schema.js';
+
+// Each ruleset has its own closure: no mutable cross-request rule state.
+export function createBlottoRules(variant = 'standard') {
+  if (!['standard', 'generalization'].includes(variant)) throw new Error('Unknown ruleset');
+  const generalized = variant === 'generalization';
 // Colonel Blotto — Jev plays one side.
 // Each round both players secretly split 10 soldiers across three battlefields
 // (Ridge, Ford, Fort). More soldiers takes a field; more fields takes the round.
@@ -8,45 +14,45 @@
 // " Analysis: …" outlook suffix on each option. The browser (js/games/blotto-core.js)
 // computes the estimates; the hinted payload is the raw record + basis/tendencies/candidates.
 //
-// NOTE: the option SET differs by design. Hinted offers only the shortlist of <= 16
-// candidates (the 10 best estimates plus the best split of other shapes); Raw offers all 66.
-// The shortlist itself is part of the hinted assistance. Every hinted option id is one of
-// the raw ids, and its criteria text starts with exactly the raw criteria text.
-//
-// Allocations travel as ids like "a5-3-2" (Ridge-Ford-Fort). The enum of all 66 legal
-// ids doubles as the "must sum to 10" check: no other id passes the schema.
-import { S, SchemaError } from '../schema.js';
+// Both modes expose every legal allocation; only analysis differs.
 
-export const FIELDS = ['Ridge', 'Ford', 'Fort'];
-export const SOLDIERS = 10;
-export const ROUNDS = 7;
+const FIELDS = generalized ? ['Plain', 'Pass', 'Fort', 'Port'] : ['Ridge', 'Ford', 'Fort'];
+const VALUES = generalized ? [1,2,3,4] : [1,1,1];
+const SOLDIERS = 10;
+const ROUNDS = 7;
 
 /** All 66 ways to split 10 soldiers over 3 fields, Ridge-heavy first. */
-export const ALLOCS = [];
-for (let a = SOLDIERS; a >= 0; a--) for (let b = SOLDIERS - a; b >= 0; b--) ALLOCS.push([a, b, SOLDIERS - a - b]);
-export const allocId = (x) => `a${x.join('-')}`;
-export const ALLOC_IDS = ALLOCS.map(allocId);
+const ALLOCS = [];
+function allocate(prefix, left) { if (prefix.length === FIELDS.length - 1) { ALLOCS.push([...prefix,left]); return; } for(let n=left;n>=0;n--) allocate([...prefix,n],left-n); }
+allocate([], SOLDIERS);
+const allocId = (x) => `a${x.join('-')}`;
+const ALLOC_IDS = ALLOCS.map(allocId);
 const BY_ID = Object.fromEntries(ALLOCS.map((x) => [allocId(x), x]));
-export const parseAlloc = (id) => BY_ID[id];
+const parseAlloc = (id) => BY_ID[id];
 
 /** Per-field outcome from the first player's view: 1 won, -1 lost, 0 tied. */
-export const fieldResults = (a, b) => a.map((v, i) => Math.sign(v - b[i]));
+const fieldResults = (a, b) => a.map((v, i) => {
+ if (!generalized || i === 0) return Math.sign(v-b[i]);
+ if (i===1) return Math.sign(Math.min(v,3)-Math.min(b[i],3));
+ if (i===2) return Math.abs(v-b[i]) >= 2 ? Math.sign(v-b[i]) : 0;
+ return Math.sign(Math.floor(v/2)-Math.floor(b[i]/2));
+});
 /** Round outcome from the first player's view: 1 won, -1 lost, 0 draw. */
-export function roundResult(a, b) {
+function roundResult(a, b) {
   const f = fieldResults(a, b);
-  return Math.sign(f.reduce((s, x) => s + x, 0));
+  return Math.sign(f.reduce((s, x, i) => s + x * VALUES[i], 0));
 }
 
-export const OUTLOOKS = ['very_strong', 'strong', 'slight_edge', 'even', 'weak', 'very_weak'];
-export const BASES = ['typical_players', 'few_rounds', 'their_past_splits'];
-export const TENDENCIES = [
+const OUTLOOKS = ['very_strong', 'strong', 'slight_edge', 'even', 'weak', 'very_weak'];
+const BASES = ['typical_players', 'few_rounds', 'their_past_splits'];
+const TENDENCIES = [
   'no_history', 'stacks_one_field', 'spreads_evenly', 'often_leaves_a_field_empty',
   'empties_ridge', 'empties_ford', 'empties_fort',
   'heavy_ridge', 'heavy_ford', 'heavy_fort',
   'light_ridge', 'light_ford', 'light_fort',
   'repeats_exact_splits', 'keeps_same_shape', 'varies_a_lot',
 ];
-export const MAX_CANDIDATES = 16;
+const MAX_CANDIDATES = ALLOCS.length;
 
 const ALLOC = S.enumv(ALLOC_IDS);
 const ROUND = S.obj({ jev: ALLOC, opp: ALLOC });
@@ -65,7 +71,11 @@ const SCHEMA = S.obj({
   candidates: S.list(S.obj({ id: ALLOC, outlook: S.enumv(OUTLOOKS) }), MAX_CANDIDATES),
 });
 
-const RULES = [
+const RULES = generalized ? [
+ 'Both players simultaneously and secretly allocate exactly 10 soldiers to Plain, Pass, Fort, Port. All allocations are available. Seven rounds; most round wins wins the match.',
+ 'Plain: value 1, more soldiers wins. Pass: value 2, only the first 3 soldiers count. Fort: value 3, win only with a lead of at least 2 soldiers; otherwise tied. Port: value 4, each complete pair of soldiers is one strength; higher strength wins.',
+ 'Tied fields give neither player points. The higher total battlefield value wins the round; equal totals draw. Neither sees the current opposing allocation.'
+ ] : [
   'Each round both players secretly split exactly 10 soldiers across three battlefields: the Ridge, the Ford and the Fort. Any whole number from 0 to 10 may go to each field.',
   'A battlefield is won by whoever placed MORE soldiers there. Equal numbers means nobody wins that field.',
   'Whoever wins more battlefields wins the round; otherwise the round is a draw.',
@@ -156,7 +166,7 @@ function base(p) {
     questions: {
       action: {
         type: 'choice',
-        instructions: 'How do you split your 10 soldiers across the Ridge, the Ford and the Fort this round?',
+        instructions: `How do you split your 10 soldiers across ${FIELDS.join(", ")} this round?`,
         criteria,
       },
       opp_stacks: {
@@ -171,7 +181,7 @@ const RAW_FIELDS = ['round', 'total', 'history'];
 
 function hinted(p) {
   const { tendencies, candidates, basis } = p;
-  if (!candidates.length) throw new SchemaError('payload.candidates: empty');
+  if (candidates.length !== ALLOCS.length) throw new SchemaError('payload.candidates: all legal allocations required');
   const ids = new Set(candidates.map((c) => c.id));
   if (ids.size !== candidates.length) throw new SchemaError('payload.candidates: duplicate id');
   if (new Set(tendencies).size !== tendencies.length) throw new SchemaError('payload.tendencies: duplicate');
@@ -183,11 +193,18 @@ function hinted(p) {
   }
   req.questions.action.criteria = criteria;
   req.state.analysis = {
-    options: `The options are a shortlist of ${plural(candidates.length, 'split')} out of all 66, chosen by code: the splits with the best estimated results plus the best split of each other shape.`,
+    options: `All ${ALLOCS.length} legal allocations are available in both modes.`,
     estimates: WORDS.basis[basis],
     opponent_tendencies: tendencies.length ? tendencies.map((k) => WORDS.tendency[k]) : ['No clear pattern yet.'],
   };
   return req;
 }
 
-export default { schema: SCHEMA, build: hinted, raw: { schema: RAW_SCHEMA, build: base } };
+const prompt = { schema: SCHEMA, build: hinted, raw: { schema: RAW_SCHEMA, build: base } };
+
+return { FIELDS, VALUES, SOLDIERS, ROUNDS, ALLOCS, allocId, ALLOC_IDS, parseAlloc, fieldResults, roundResult, OUTLOOKS, BASES, TENDENCIES, MAX_CANDIDATES, prompt };
+}
+
+const standard = createBlottoRules();
+export const { FIELDS, VALUES, SOLDIERS, ROUNDS, ALLOCS, allocId, ALLOC_IDS, parseAlloc, fieldResults, roundResult, OUTLOOKS, BASES, TENDENCIES, MAX_CANDIDATES } = standard;
+export default standard.prompt;

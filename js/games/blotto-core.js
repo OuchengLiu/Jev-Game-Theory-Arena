@@ -1,22 +1,24 @@
+import { createBlottoRules } from '../../shared/games/blotto.js';
+
+// Each ruleset has its own closure: no mutable cross-request rule state.
+export function createBlotto(variant = 'standard') {
+  if (!['standard', 'generalization'].includes(variant)) throw new Error('Unknown ruleset');
+  const generalized = variant === 'generalization';
 // Colonel Blotto — pure game logic and the code-side analysis for hinted mode.
 // No DOM, no engine imports: testable from Node. Used by js/games/blotto.js.
 //
 // History entries are always kept from Jev's view: { jev: [r, f, t], opp: [r, f, t] }
 // where opp is the human.
 
-import {
-  ALLOCS, ALLOC_IDS, SOLDIERS, ROUNDS, allocId, parseAlloc, fieldResults, roundResult,
-  MAX_CANDIDATES,
-} from '../../shared/games/blotto.js';
+const { ALLOCS, ALLOC_IDS, SOLDIERS, ROUNDS, allocId, parseAlloc, fieldResults, roundResult, MAX_CANDIDATES } = createBlottoRules(variant);
 
-export { ALLOCS, ALLOC_IDS, SOLDIERS, ROUNDS, allocId, parseAlloc, fieldResults, roundResult };
-export const FIELD_KEYS = ['ridge', 'ford', 'fort'];
+const FIELD_KEYS = generalized ? ['plain','pass','fort','port'] : ['ridge','ford','fort'];
 
-const N = ALLOCS.length; // 66
+const N = ALLOCS.length;
 const shapeOf = (x) => [...x].sort((a, b) => b - a).join('-');
 const SHAPES = ALLOCS.map(shapeOf);
 const IDX = Object.fromEntries(ALLOC_IDS.map((id, i) => [id, i]));
-export const indexOf = (x) => IDX[allocId(x)];
+const indexOf = (x) => IDX[allocId(x)];
 
 // OUTCOME[i][j]: result of allocation i against j (1 / 0 / -1).
 const OUTCOME = ALLOCS.map((a) => ALLOCS.map((b) => roundResult(a, b)));
@@ -24,7 +26,7 @@ const OUTCOME = ALLOCS.map((a) => ALLOCS.map((b) => roundResult(a, b)));
 // A sensible prior for how people split 10 soldiers: mostly balanced-ish (4-3-3, 5-3-2,
 // 4-4-2...), heavy stacks are rarer, an all-in 10-0-0 shows up now and then.
 const MAX_WEIGHT = [0, 0, 0, 0, 1, 0.85, 0.5, 0.25, 0.1, 0.05, 0.08];
-export const PRIOR = (() => {
+const PRIOR = (() => {
   const w = ALLOCS.map((x) => MAX_WEIGHT[Math.max(...x)] * (x.includes(0) && Math.max(...x) < 10 ? 0.7 : 1));
   const s = w.reduce((a, b) => a + b, 0);
   return w.map((v) => v / s);
@@ -33,8 +35,8 @@ export const PRIOR = (() => {
 const PRIOR_STRENGTH = 2.5; // pseudo-rounds of prior
 const EXACT_SHARE = 0.65;   // rest of each observation spreads over its rearrangements
 
-/** Distribution over the 66 splits for the opponent's next move, from their past splits. */
-export function opponentModel(oppSplits) {
+/** Distribution over the legal splits for the opponent's next move, from their past splits. */
+function opponentModel(oppSplits) {
   const n = oppSplits.length;
   const w = PRIOR.map((p) => p * PRIOR_STRENGTH);
   oppSplits.forEach((x, k) => {
@@ -42,15 +44,15 @@ export function opponentModel(oppSplits) {
     const i = indexOf(x);
     w[i] += r * EXACT_SHARE;
     const perms = [];
-    for (let j = 0; j < N; j++) if (SHAPES[j] === SHAPES[i]) perms.push(j);
+    for (let j = 0; j < N; j++) if (generalized ? j === i : SHAPES[j] === SHAPES[i]) perms.push(j);
     for (const j of perms) w[j] += (r * (1 - EXACT_SHARE)) / perms.length;
   });
   const s = w.reduce((a, b) => a + b, 0);
   return w.map((v) => v / s);
 }
 
-/** Expected score (win = 1, draw = 0.5) of each of the 66 splits against a model. */
-export function evaluate(model) {
+/** Expected score (win = 1, draw = 0.5) of each legal split against a model. */
+function evaluate(model) {
   return OUTCOME.map((row) => {
     let s = 0;
     for (let j = 0; j < N; j++) s += model[j] * (row[j] === 1 ? 1 : row[j] === 0 ? 0.5 : 0);
@@ -58,7 +60,7 @@ export function evaluate(model) {
   });
 }
 
-export function outlook(score) {
+function outlook(score) {
   return score >= 0.72 ? 'very_strong'
     : score >= 0.6 ? 'strong'
     : score >= 0.53 ? 'slight_edge'
@@ -67,10 +69,10 @@ export function outlook(score) {
     : 'very_weak';
 }
 
-export const basisOf = (n) => (n === 0 ? 'typical_players' : n < 3 ? 'few_rounds' : 'their_past_splits');
+const basisOf = (n) => (n === 0 ? 'typical_players' : n < 3 ? 'few_rounds' : 'their_past_splits');
 
 /** Tendency words (TENDENCIES enum) describing the human's past splits. At most 6. */
-export function tendencies(oppSplits) {
+function tendencies(oppSplits) {
   const n = oppSplits.length;
   if (!n) return ['no_history'];
   const out = [];
@@ -98,7 +100,7 @@ export function tendencies(oppSplits) {
 }
 
 /** Up to 16 candidates: the 10 best by estimate plus the best split of other shapes. */
-export function shortlist(scores) {
+function shortlist(scores) {
   const order = scores.map((s, i) => [s, i]).sort((a, b) => b[0] - a[0]).map(([, i]) => i);
   const pick = order.slice(0, 10);
   const seen = new Set(pick.map((i) => SHAPES[i]));
@@ -109,14 +111,14 @@ export function shortlist(scores) {
   return pick.sort((a, b) => a - b); // neutral (id) order, so list position says nothing
 }
 
-export const oppSplitsOf = (history) => history.map((r) => r.opp);
+const oppSplitsOf = (history) => history.map((r) => r.opp);
 
 /** Everything the UI sends to Jev for one round. history: [{jev, opp}] as arrays. */
-export function makePayloads(history, total = ROUNDS) {
+function makePayloads(history, total = ROUNDS) {
   const opp = oppSplitsOf(history);
   const model = opponentModel(opp);
   const scores = evaluate(model);
-  const picks = shortlist(scores);
+  const picks = ALLOCS.map((_,i)=>i);
   const wire = history.map((r) => ({ jev: allocId(r.jev), opp: allocId(r.opp) }));
   const round = history.length + 1;
   const raw = { round, total, history: wire };
@@ -125,14 +127,14 @@ export function makePayloads(history, total = ROUNDS) {
     ...raw,
     history: wire.map((r) => ({ ...r })),
     basis: basisOf(opp.length),
-    tendencies: tendencies(opp),
+    tendencies: generalized ? [] : tendencies(opp),
     candidates: picks.map((i) => ({ id: ALLOC_IDS[i], outlook: outlook(scores[i]) })),
   };
   return { hinted, raw, candidateIds: picks.map((i) => ALLOC_IDS[i]), scores, model };
 }
 
-/** Practice bot: softmax over the shortlist by estimated score, plus a stacking guess. */
-export function botWeights(payload, temperature = 0.07) {
+/** Practice bot: softmax over the full action set by estimated score, plus a stacking guess. */
+function botWeights(payload, temperature = 0.07) {
   const opp = payload.history.map((r) => parseAlloc(r.opp));
   const scores = evaluate(opponentModel(opp));
   const ids = payload.candidates.map((c) => c.id);
@@ -146,12 +148,18 @@ export function botWeights(payload, temperature = 0.07) {
 }
 
 /** Round summary from the human's view. */
-export function resolve(you, jev) {
+function resolve(you, jev) {
   const fields = fieldResults(you, jev); // 1 = human won the field
-  return { fields, result: Math.sign(fields.reduce((a, b) => a + b, 0)) };
+  return { fields, result: roundResult(you, jev) };
 }
 
-export function randomAlloc(rng = Math.random) {
+function randomAlloc(rng = Math.random) {
   return [...ALLOCS[Math.floor(rng() * N)]];
 }
 
+
+return { FIELD_KEYS, indexOf, PRIOR, opponentModel, evaluate, outlook, basisOf, tendencies, shortlist, oppSplitsOf, makePayloads, botWeights, resolve, randomAlloc, ALLOCS, ALLOC_IDS, SOLDIERS, ROUNDS, allocId, parseAlloc, fieldResults, roundResult };
+}
+
+const standard = createBlotto();
+export const { FIELD_KEYS, indexOf, PRIOR, opponentModel, evaluate, outlook, basisOf, tendencies, shortlist, oppSplitsOf, makePayloads, botWeights, resolve, randomAlloc, ALLOCS, ALLOC_IDS, SOLDIERS, ROUNDS, allocId, parseAlloc, fieldResults, roundResult } = standard;

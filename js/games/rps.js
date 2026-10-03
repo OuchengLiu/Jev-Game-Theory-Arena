@@ -1,28 +1,16 @@
-// Rock-Paper-Scissors: "Predict the human". Jev judges, code acts:
-// Jev only predicts your next throw; code plays the hand that beats the prediction
-// (Top pick: the counter to Jev's top prediction; By odds: sampled from the prediction).
+// Rock-Paper-Scissors: direct model action, with a separate prediction for analysis.
 
 import { choiceAnswer, noulAnswer, normalize } from '../engine.js';
+import { createRps } from '../../shared/games/rps.js';
 import { THROWS, COUNTER, outcomeOf, analyze, applyRel, COND } from '../../shared/games/rps.js';
 
 const TOTAL = 20;
 const KEYS = { 1: 'rock', 2: 'paper', 3: 'scissors', r: 'rock', p: 'paper', s: 'scissors' };
 
-/**
- * Turn Jev's prediction of the human's throw into Jev's own throw distribution: each predicted
- * throw's probability goes to the hand that beats it. No code-side mixing: under Top pick Jev
- * always plays the counter to its top prediction; under By odds it samples from the prediction.
- */
-export function jevStrategy(predict) {
-  const pred = normalize(Object.fromEntries(THROWS.map((x) => [x, predict?.probabilities?.[x] ?? 0])));
-  const mix = Object.fromEntries(THROWS.map((x) => [x, 0]));
-  for (const x of THROWS) mix[COUNTER[x]] += pred[x];
-  return { pred, mix };
-}
-
 // Practice bot (automatic fallback when Jev is unreachable):
 // frequency + first-order Markov (after throw X) + habit after win/loss/draw.
-export function localBot({ history }) {
+export function localBot({ history, variant = 'standard' }) {
+  const {analyze,applyRel,COUNTER} = createRps(variant);
   const a = analyze(history);
   const wts = { rock: 1, paper: 1, scissors: 1 };
   for (const x of THROWS) wts[x] += 0.5 * a.counts[x];
@@ -35,6 +23,7 @@ export function localBot({ history }) {
   const edge = Math.max(...Object.values(predict.probabilities)) - 1 / 3;
   return {
     predict,
+    action: choiceAnswer(Object.fromEntries(THROWS.map(x=>[COUNTER[x],predict.probabilities[x]]))),
     patterned: noulAnswer(Math.min(0.95, 0.1 + edge * 2.2 * Math.min(1, a.n / 5))),
   };
 }
@@ -83,13 +72,14 @@ const P = (pt) => `${pt[0].toFixed(1)},${pt[1].toFixed(1)}`;
 
 export default {
   id: 'rps',
-  meta: { icon: 'hand', accent: '#ec4899', minutes: 2, version: '1.5' },
+  meta: { icon: 'hand', accent: '#ec4899', minutes: 2, version: '2.0' },
   strings: {
     en: {
       title: 'Rock · Paper · Scissors',
-      tagline: 'Twenty throws. Jev doesn’t choose a hand. It predicts yours, and the code plays whatever beats it.',
+      tagline: 'Twenty throws. Both players choose independently; neither sees the other’s current throw.',
+      actionQ: 'The opponent chooses…',
       concept: 'Mixed-strategy Nash equilibrium',
-      rules: 'Rock beats scissors, scissors beats paper, paper beats rock. 20 rounds; most round wins takes the match. Each round Jev predicts your next throw and plays the hand that beats it. Throwing each hand exactly 1/3 of the time at random is the Nash equilibrium: nobody can beat it on average. Any pattern you fall into can be exploited. Keys: 1 / 2 / 3.',
+      rules: 'Rock beats scissors, scissors beats paper, paper beats rock. 20 rounds; most round wins takes the match. Each round the model chooses its own throw independently; a separate prediction is shown for analysis. Throwing each hand exactly 1/3 of the time at random is the Nash equilibrium: nobody can beat it on average. Any pattern you fall into can be exploited. Keys: 1 / 2 / 3.',
       rock: 'Rock', paper: 'Paper', scissors: 'Scissors',
       choose: 'Round {n}: make your throw',
       shoot: 'Rock… paper… scissors…',
@@ -120,9 +110,10 @@ export default {
     },
     zh: {
       title: '石头剪刀布',
-      tagline: '二十把。Jev 不直接出拳，而是预测你会出什么，再由代码出克制你的那一手。',
+      tagline: '二十回合，双方独立出拳，互相看不到本轮选择。',
+      actionQ: '对手选择出……',
       concept: '混合策略纳什均衡',
-      rules: '石头赢剪刀，剪刀赢布，布赢石头。共 20 回合，赢的回合多者胜。每回合 Jev 先预测你要出什么，再出克制它的那一手。三种手势各以 1/3 的概率随机出，就是纳什均衡：长期来看谁也赢不了你。只要你出拳有规律，就可能被利用。快捷键：1 / 2 / 3。',
+      rules: '石头赢剪刀，剪刀赢布，布赢石头。共 20 回合，赢的回合多者胜。每回合模型独立选择自己的出拳，另作预测供分析。三种手势各以 1/3 的概率随机出，就是纳什均衡：长期来看谁也赢不了你。只要你出拳有规律，就可能被利用。快捷键：1 / 2 / 3。',
       rock: '石头', paper: '布', scissors: '剪刀',
       choose: '第 {n} 回合，请出拳',
       shoot: '石头……剪刀……布……',
@@ -154,6 +145,7 @@ export default {
   },
 
   mount(board, ctx) {
+    const { outcomeOf } = createRps(ctx.settings.get('variant') || 'standard');
     const { t, h, panel } = ctx;
     let alive = true;
     let history, preds, wins, busy, last, hits, fresh, prevPoint;
@@ -188,12 +180,12 @@ export default {
       const res = await ctx.decide('rps', () => payload, localBot);
       if (!alive) return;
       const patterned = res.answers?.patterned?.noul;
-      const { pred, mix } = jevStrategy(res.answers?.predict);
+      const pred = normalize(res.answers.predict.probabilities);
+      const mix = normalize(res.answers.action.probabilities);
       const top = THROWS.reduce((a, b) => (pred[b] > pred[a] ? b : a));
       const guess = pred[top] - Math.min(...THROWS.map((x) => pred[x])) >= 0.03 ? top : null; // null: no real read
-      // Top pick → the counter to Jev's top prediction; By odds (and the practice bot) → sampled
-      const act = choiceAnswer(mix);
-      if (res.answers?.predict?.greedy) Object.defineProperty(act, 'greedy', { value: true });
+      // Apply the selected policy to the model's own action distribution.
+      const act = res.answers.action;
       const jev = ctx.pickAction(act, THROWS);
       const outcome = outcomeOf(human, jev);
       prevPoint = preds.length ? bary(preds[preds.length - 1]) : bary({ rock: 1 / 3, paper: 1 / 3, scissors: 1 / 3 });
@@ -207,15 +199,15 @@ export default {
       track('opp', res, { ph, act: jev, x: top === human ? 'hit' : 'miss' });
       track('opp', res, { ph, act: top, x: 'pred' });
       track('cal', res, { ph: 'predict', p: pred[top], truth: top === human });
-      if (history.length >= TOTAL) track('end', wins.human > wins.jev ? 'win' : wins.human < wins.jev ? 'lose' : 'draw');
+      if (history.length >= TOTAL) track('end', wins.human > wins.jev ? 'win' : wins.human < wins.jev ? 'lose' : 'draw', [wins.human,wins.jev]);
       const shown = { ...res, answers: { ...res.answers, predict: { ...(res.answers?.predict || {}), probabilities: pred } } };
       panel.show(shown, {
-        question: 'predict',
+        question: 'action',
         labels: () => Object.fromEntries(THROWS.map((x) => [x, name(x)])),
-        title: () => t('rps.q'),
+        title: () => t('rps.actionQ'),
         extras: () => [
           { label: t('rps.patterned'), value: patterned },
-          ...THROWS.map((x) => ({ label: t('rps.plays', { x: name(x) }), value: mix[x] })),
+          ...THROWS.map((x) => ({ label: t('rps.predicted', { x: name(x) }), value: pred[x] })),
         ],
       });
       busy = false;

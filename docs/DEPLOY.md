@@ -147,3 +147,7 @@ npx wrangler deploy
 ### 费用估算
 
 按每百万输入 token 0.042 美元、每步约 400 到 900 token 计算，每天 2 万步的费用远低于 1 美元。
+
+### 实验 v2 发布
+
+本次包含 D1 增量迁移和新的 Durable Object，必须先迁移数据库、再部署 Worker、最后发布前端。具体步骤、泛化规则与 OpenAI 接口预留见 [EXPERIMENT-V2.md](EXPERIMENT-V2.md)。

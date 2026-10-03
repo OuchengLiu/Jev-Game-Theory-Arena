@@ -1,3 +1,9 @@
+import { S, SchemaError } from '../schema.js';
+
+// Each ruleset has its own closure: no mutable cross-request rule state.
+export function createUltimatum(variant = 'standard') {
+  if (!['standard', 'generalization'].includes(variant)) throw new Error('Unknown ruleset');
+  const generalized = variant === 'generalization';
 // Ultimatum Game, 8 rounds with alternating roles. Pot of 10 coins.
 // role 'propose': Jev chooses how many coins to offer the human.
 // role 'respond': Jev accepts or rejects the human's offer.
@@ -7,14 +13,14 @@
 // proposals/responses, rounds remaining) + an " Analysis: …" suffix on each option (the
 // fairness bucket of the split and what the opponent's past responses say about it).
 // Both modes take the same payload.
-import { S, SchemaError } from '../schema.js';
 
-export const POT = 10;
-export const ROUNDS = 8;
-export const OFFERS = Array.from({ length: POT + 1 }, (_, k) => String(k));
+const POT = 10;
+const rejectionPayoff = generalized ? [1, 2] : [0, 0]; // proposer, responder
+const ROUNDS = 8;
+const OFFERS = Array.from({ length: POT + 1 }, (_, k) => String(k));
 
 /** Semantic fairness word for an offer of k coins (to the responder) out of 10. */
-export function fairness(k) {
+function fairness(k) {
   if (k === 0) return 'nothing at all; the proposer keeps everything';
   if (k <= 2) return 'very unfair to the responder';
   if (k === 3) return 'unfair to the responder';
@@ -26,7 +32,7 @@ export function fairness(k) {
 }
 
 /** Facts about the human's behaviour, computed in code. */
-export function profile(history) {
+function profile(history) {
   const asResp = history.filter((r) => r.proposer === 'jev');
   const asProp = history.filter((r) => r.proposer === 'human');
   const accepted = asResp.filter((r) => r.accepted).map((r) => r.offer);
@@ -40,7 +46,7 @@ export function profile(history) {
 }
 
 /** What the human's past responses say about an offer of k coins. */
-export function evidenceFor(k, p) {
+function evidenceFor(k, p) {
   const acc = p.minAccepted !== null && k >= p.minAccepted;
   const rej = p.maxRejected !== null && k <= p.maxRejected;
   if (acc && rej) return 'mixed evidence: the opponent has both accepted and rejected offers around this size';
@@ -87,8 +93,8 @@ function base({ role, round, total, offer, history }) {
   let you = 0;
   let opp = 0;
   const rounds = history.map((r, i) => {
-    const toJev = r.accepted ? (r.proposer === 'human' ? r.offer : POT - r.offer) : 0;
-    const toOpp = r.accepted ? (r.proposer === 'human' ? POT - r.offer : r.offer) : 0;
+    const toJev = r.accepted ? (r.proposer === 'human' ? r.offer : POT - r.offer) : rejectionPayoff[r.proposer === 'jev' ? 0 : 1];
+    const toOpp = r.accepted ? (r.proposer === 'human' ? POT - r.offer : r.offer) : rejectionPayoff[r.proposer === 'human' ? 0 : 1];
     you += toJev;
     opp += toOpp;
     const what = r.proposer === 'jev'
@@ -97,7 +103,7 @@ function base({ role, round, total, offer, history }) {
     return `Round ${i + 1}: ${what}. You got ${toJev}, the opponent got ${toOpp}.`;
   });
   const state = {
-    game: `Repeated Ultimatum Game between you and one opponent, ${total} rounds, roles alternate. Each round a pot of ${POT} coins is split: the proposer offers some coins to the responder; if the responder accepts, both get their share; if the responder rejects, both get nothing.`,
+    game: `Repeated Ultimatum Game between you and one opponent, ${total} rounds, roles alternate. Each round a pot of ${POT} coins is split: the proposer offers some coins to the responder; if the responder accepts, both get their share; if the responder rejects, the proposer gets ${rejectionPayoff[0]} and the responder gets ${rejectionPayoff[1]}.`,
     goal: 'Maximise your total coins over all rounds.',
     round: `Round ${round} of ${total}.`,
     your_role: role === 'propose' ? 'You are the PROPOSER this round; the opponent responds.' : 'You are the RESPONDER this round; the opponent proposed.',
@@ -132,7 +138,7 @@ function base({ role, round, total, offer, history }) {
         instructions: "Do you accept or reject the opponent's offer?",
         criteria: {
           accept: `Accept: you get ${coinsWord(offer)}, the opponent gets ${POT - offer}.`,
-          reject: 'Reject: both get 0 coins this round.',
+          reject: `Reject: you get ${rejectionPayoff[1]} coins and the proposer gets ${rejectionPayoff[0]}.`,
         },
       },
       fair: {
@@ -171,8 +177,15 @@ function hinted(payload) {
   return req;
 }
 
-export default {
+const prompt = {
   schema: SCHEMA,
   build: hinted,
   raw: { schema: SCHEMA, build: base },
 };
+
+return { POT, rejectionPayoff, ROUNDS, OFFERS, fairness, profile, evidenceFor, prompt };
+}
+
+const standard = createUltimatum();
+export const { POT, rejectionPayoff, ROUNDS, OFFERS, fairness, profile, evidenceFor } = standard;
+export default standard.prompt;

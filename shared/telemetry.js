@@ -20,6 +20,7 @@
 //   a: 'jev'|'bot', ph: question id, act: probability bucket 'p0'…'p9' (p0 = 0–10%), x: 'yes'|'no'.
 
 import { S, check, SchemaError } from './schema.js';
+import { createBlottoRules } from './games/blotto.js';
 
 const range = (prefix, from, to) => Array.from({ length: to - from + 1 }, (_, i) => `${prefix}${from + i}`);
 
@@ -45,7 +46,7 @@ export const SPECS = {
     phases: range('r', 1, 8), acts: [...range('o', 0, 10), 'accept', 'reject'], xs: range('', 0, 10),
   },
   blotto: {
-    phases: range('r', 1, 15), acts: SHAPES, xs: ['win', 'lose', 'draw'],
+    phases: range('r', 1, 15), acts: [...SHAPES,...createBlottoRules('generalization').ALLOCS.map(a=>a.join('-'))], xs: ['win', 'lose', 'draw'],
     cal: ['opp_stacks'],
   },
   liarsdice: {
@@ -79,7 +80,7 @@ export const P_BUCKETS = range('p', 0, 9);
 export const bucketOf = (p) => `p${Math.min(9, Math.max(0, Math.floor(Number(p) * 10)))}`;
 
 const VERSION = /^\d{1,3}(\.\d{1,3}){0,2}$/;
-const MODEL = /^[a-z0-9][a-z0-9.\-]{0,31}$/;
+const MODEL = /^[a-z0-9@][a-z0-9./@_\-]{0,95}$/;
 const MATCH_ID = /^[a-z0-9]{12,24}$/;
 
 const allActs = [...new Set(GAMES.flatMap((g) => [...SPECS[g].acts, ...RESULTS]).concat(P_BUCKETS))];
@@ -90,9 +91,14 @@ const EVENT = S.obj({
   g: S.enumv(GAMES),
   gv: S.enumv('_'), // placeholder, checked by regex below
   m: S.enumv('hinted', 'raw', 'practice'),
+  ex: S.optional(S.enumv('2')),
+  v: S.optional(S.enumv('standard','generalization')),
+  opp: S.optional(S.enumv('jev','luna')),
+  as: S.optional(S.enumv('adaptive','manual','offline')),
+  mix: S.optional(S.bool()),
   pol: S.optional(S.enumv('greedy', 'sample')),
   k: S.enumv('move', 'end', 'cal'),
-  a: S.optional(S.enumv('human', 'jev', 'bot')),
+  a: S.optional(S.enumv('human', 'jev', 'luna', 'bot')),
   mdl: S.optional(S.enumv('_')),
   ph: S.optional(S.enumv(allPhases)),
   act: S.enumv(allActs),
@@ -103,7 +109,7 @@ const EVENT = S.obj({
 export function checkBatch(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new SchemaError('batch: not an object');
   const keys = Object.keys(body);
-  for (const k of keys) if (!['s', 'p', 'r', 'l', 'av', 'e'].includes(k)) throw new SchemaError(`batch: unexpected field "${k}"`);
+  for (const k of keys) if (!['s', 'p', 'r', 'l', 'av', 'e', 'b', 'aid'].includes(k)) throw new SchemaError(`batch: unexpected field "${k}"`);
   if (body.p !== undefined && (typeof body.p !== 'string' || !MATCH_ID.test(body.p))) throw new SchemaError('batch.p: invalid');
   if (typeof body.s !== 'string' || !MATCH_ID.test(body.s)) throw new SchemaError('batch.s: invalid');
   if (typeof body.r !== 'boolean') throw new SchemaError('batch.r: invalid');
@@ -111,33 +117,37 @@ export function checkBatch(body) {
   if (typeof body.av !== 'string' || !VERSION.test(body.av)) throw new SchemaError('batch.av: invalid');
   if (!Array.isArray(body.e) || body.e.length === 0 || body.e.length > MAX_EVENTS) throw new SchemaError('batch.e: invalid length');
 
+  if (body.b!==undefined && !MATCH_ID.test(body.b)) throw new SchemaError('invalid batch id');
+  if(body.aid!==undefined && (typeof body.aid!=='string' || !/^[a-z0-9-]{0,64}$/.test(body.aid))) throw new SchemaError('invalid assignment id');
   const events = body.e.map((ev, i) => {
     if (!ev || typeof ev !== 'object') throw new SchemaError(`e[${i}]: invalid`);
-    const { gv, mdl, pr, nl, ...rest } = ev;
+    const { gv, mdl, pr, nl, hs, os, ...rest } = ev;
     if (typeof gv !== 'string' || !VERSION.test(gv)) throw new SchemaError(`e[${i}].gv: invalid`);
     if (mdl !== undefined && (typeof mdl !== 'string' || !MODEL.test(mdl))) throw new SchemaError(`e[${i}].mdl: invalid`);
     const clean = check(EVENT, { ...rest, gv: '_', ...(mdl !== undefined ? { mdl: '_' } : {}) }, `e[${i}]`);
     clean.gv = gv;
+    if(clean.ex==='2' && (!body.b || !clean.v || !clean.opp || !clean.as)) throw new SchemaError('missing experiment metadata');
+    if(hs!==undefined || os!==undefined) { if(clean.k!=='end' || ![hs,os].every(x=>Number.isFinite(x)&&Math.abs(x)<=1000000)) throw new SchemaError('invalid scores'); clean.hs=hs;clean.os=os; }
     if (mdl !== undefined) clean.mdl = mdl;
     if (clean.pol && clean.m === 'practice') throw new SchemaError(`e[${i}]: no play policy in practice mode`);
     if (pr !== undefined || nl !== undefined) {
-      if (clean.k !== 'move' || !['jev', 'bot'].includes(clean.a)) throw new SchemaError(`e[${i}]: probabilities only on opponent moves`);
-      if (pr !== undefined) clean.pr = checkProbMap(pr, OPTION_KEY, 70, `e[${i}].pr`);
+      if (clean.k !== 'move' || !['jev', 'luna', 'bot'].includes(clean.a)) throw new SchemaError(`e[${i}]: probabilities only on opponent moves`);
+      if (pr !== undefined) clean.pr = checkProbMap(pr, OPTION_KEY, 300, `e[${i}].pr`);
       if (nl !== undefined) clean.nl = checkProbMap(nl, NOUL_KEY, 4, `e[${i}].nl`);
     }
     const spec = SPECS[clean.g];
     if (clean.k === 'end') {
       if (!RESULTS.includes(clean.act) || clean.a || clean.ph || clean.x) throw new SchemaError(`e[${i}]: bad end event`);
     } else if (clean.k === 'cal') {
-      if (!['jev', 'bot'].includes(clean.a) || !(spec.cal || []).includes(clean.ph) || !P_BUCKETS.includes(clean.act) || !['yes', 'no'].includes(clean.x)) throw new SchemaError(`e[${i}]: bad calibration event`);
-      if (clean.a === 'jev' && clean.m === 'practice') throw new SchemaError(`e[${i}]: jev in practice mode`);
+      if (!['jev', 'luna', 'bot'].includes(clean.a) || !(spec.cal || []).includes(clean.ph) || !P_BUCKETS.includes(clean.act) || !['yes', 'no'].includes(clean.x)) throw new SchemaError(`e[${i}]: bad calibration event`);
+      if (['jev','luna'].includes(clean.a) && clean.m === 'practice') throw new SchemaError(`e[${i}]: jev in practice mode`);
     } else {
       if (!clean.a || !spec.acts.includes(clean.act)) throw new SchemaError(`e[${i}]: bad action for ${clean.g}`);
       if (clean.ph !== undefined && !spec.phases.includes(clean.ph)) throw new SchemaError(`e[${i}]: bad phase for ${clean.g}`);
       if (clean.x !== undefined && !spec.xs.includes(clean.x)) throw new SchemaError(`e[${i}]: bad detail for ${clean.g}`);
-      if (clean.a === 'jev' && clean.m === 'practice') throw new SchemaError(`e[${i}]: jev in practice mode`);
+      if (['jev','luna'].includes(clean.a) && clean.m === 'practice') throw new SchemaError(`e[${i}]: jev in practice mode`);
     }
     return clean;
   });
-  return { s: body.s, ...(body.p ? { p: body.p } : {}), r: body.r, l: body.l, av: body.av, e: events };
+  return { s: body.s, ...(body.p ? { p: body.p } : {}), r: body.r, l: body.l, av: body.av, e: events, ...(body.b ? {b:body.b} : {}), ...(body.aid ? {aid:body.aid} : {}) };
 }

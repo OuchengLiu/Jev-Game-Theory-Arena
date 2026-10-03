@@ -9,6 +9,7 @@
 // ctx.decide(gameId, (mode) => payload, practiceBot): the payload is the same for both
 // Jev modes here; shared/games/pd.js turns it into a hinted or a raw request.
 
+import { createPd } from '../../shared/games/pd.js';
 import { choiceAnswer, noulAnswer } from '../engine.js';
 
 const TOTAL = 10;
@@ -16,13 +17,14 @@ const PAYOFF = { CC: [3, 3], CD: [0, 5], DC: [5, 0], DD: [1, 1] }; // [human, je
 
 // Practice bot (automatic fallback when Jev is unreachable): generous tit-for-tat
 // with an end-game defection streak.
-export function localBot({ round, total, history }) {
+export function localBot({ round, total, history, variant }) {
   const last = history[history.length - 1];
   const oppC = history.filter((x) => x.opp === 'C').length;
   const rate = history.length ? oppC / history.length : 0.6;
   let pc = !last ? 0.85 : last.opp === 'C' ? 0.9 : 0.2;
   pc = 0.7 * pc + 0.3 * rate;
-  if (round === total) pc *= 0.25;
+  if (variant === 'generalization') pc = rate > 2/3 ? 0.9 : 0.2;
+  else if (round === total) pc *= 0.25;
   return {
     action: choiceAnswer({ cooperate: pc, defect: 1 - pc }),
     opp_will_cooperate: noulAnswer(!last ? 0.6 : last.opp === 'C' ? 0.5 + rate / 2 : rate / 2),
@@ -51,7 +53,7 @@ const mark = (m, x, y, r, cls = '') => (m === 'C'
 
 export default {
   id: 'pd',
-  meta: { icon: 'handshake', accent: '#10b981', minutes: 3, version: '1.4' },
+  meta: { icon: 'handshake', accent: '#10b981', minutes: 3, version: '2.0' },
   strings: {
     en: {
       title: "Prisoner's Dilemma",
@@ -120,6 +122,7 @@ export default {
   },
 
   mount(board, ctx) {
+    const { PAYOFF } = createPd(ctx.settings.get('variant') || 'standard');
     const { t, h, panel } = ctx;
     let alive = true;
     let history, score, busy, pending, fresh;
@@ -158,7 +161,7 @@ export default {
       track('opp', res, { ph, act: jev, x: prev ? `after_${prev.opp}` : undefined });
       const pCoop = res.answers?.opp_will_cooperate?.noul;
       if (typeof pCoop === 'number') track('cal', res, { ph: 'opp_will_cooperate', p: pCoop, truth: mine === 'C' });
-      if (history.length >= TOTAL) track('end', score[0] > score[1] ? 'win' : score[0] < score[1] ? 'lose' : 'draw');
+      if (history.length >= TOTAL) track('end', score[0] > score[1] ? 'win' : score[0] < score[1] ? 'lose' : 'draw', score);
       panel.show(res, {
         labels: () => ({ cooperate: t('pd.cooperate'), defect: t('pd.defect') }),
         picked: jevAct,
@@ -316,7 +319,7 @@ export default {
         type: 'button', class: c ? 'c' : 'd', disabled: busy, onclick: () => play(m),
       },
       h('span.pd-move-ico', { html: ICON[m] }),
-      h('span.pd-move-txt', h('b', t(c ? 'pd.cooperate' : 'pd.defect')), h('small', t(c ? 'pd.coopHint' : 'pd.defectHint'))),
+      h('span.pd-move-txt', h('b', t(c ? 'pd.cooperate' : 'pd.defect')), h('small', ctx.settings.get('variant')==='generalization' ? (ctx.settings.get('lang')==='zh' ? (c ? '对方合作得4分，背叛得0分' : '对方合作得3分，背叛得2分') : (c ? '4 against cooperation, 0 against defection' : '3 against cooperation, 2 against defection')) : t(c ? 'pd.coopHint' : 'pd.defectHint'))),
       h('kbd', c ? 'C' : 'D'));
     }
 

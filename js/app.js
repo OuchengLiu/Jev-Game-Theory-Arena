@@ -1,3 +1,6 @@
+import { prepareAssignment, rememberManual } from './assignment.js';
+import { showRuleDifference } from './rule-dialog.js';
+import { variantText } from './variants.js';
 // Jev Game Theory Lab · © the Jev Game Theory Lab authors · see LICENSE · canary GUID JGTL-CANARY-7c006748-fdca-49c4-ba68-4f6b9bd0cd16
 import { t, registerStrings } from './i18n.js';
 import { settings, jevAvailable, effectiveMode } from './settings.js';
@@ -234,9 +237,18 @@ function modeControl() {
 
 // Switching the opponent mode or move choice mid-match would mix two opponents in one match,
 // so it starts a new match, after the player confirms. Before any move it just switches.
+const explainedRules = new Set();
 function switchOpponent(key, v) {
   if (settings.get(key) === v) return;
-  const apply = () => { if (current) current.restart = current.moves > 0; settings.set(key, v); };
+  const apply = () => { const game = current?.game.id; if (current) current.restart = true; if(game) rememberManual(game, key, v); settings.set(key, v); };
+  if (key === 'variant' && current) {
+    const game=current.game;
+    current.ruleDialog=showRuleDifference(game,v,{switching:true,restart:current.moves>0,onConfirm:()=>{
+      explainedRules.add(`${game.id}:${v}`);
+      apply();
+    }});
+    return;
+  }
   if (!current?.moves) { apply(); return; }
   const dlg = h('dialog.confirm', { 'aria-labelledby': 'confirm-t' },
     h('h3#confirm-t', t('switch.t')),
@@ -312,11 +324,11 @@ function rulesToggle(game) {
   const d = h('details.rules', { open: !seen },
     // record only real clicks (setting `open` in code also fires a toggle event)
     h('summary', { onclick: () => { (rulesToggle.open ||= {})[game.id] = !d.open; } }, svgEl(icons.book), t('rules')),
-    h('p', t(`${game.id}.rules`)));
+    h('p', settings.get('variant')==='generalization' ? variantText(game.id,settings.get('lang')) : t(`${game.id}.rules`)));
   return d;
 }
 
-function gamePage(game) {
+function gamePage(game, deferMount = false) {
   const panel = new ThinkPanel();
   const board = h('section.board');
   // Games pass conditional children (`cond ? el : null`); the native method would print "null".
@@ -330,10 +342,11 @@ function gamePage(game) {
         svgEl(gameIcon(game.id, 30), 'title-icon'),
         h('div',
           h('h1.display-sm', t(`${game.id}.title`)),
-          h('p.muted', t(`${game.id}.tagline`)),
+          h('p.muted', settings.get('variant')==='generalization' ? t('experiment.generalization') : t(`${game.id}.tagline`)),
         ),
       ),
-      h('div.controls', mode, policyControl()),
+      h('div.controls', mode, policyControl(),
+        h('div.control',h('span.control-label',t('experiment.rules')),segmented(['standard','generalization'].map(value=>({value,label:t(`experiment.${value}`)})),settings.get('variant'),v=>switchOpponent('variant',v)))),
     ),
     h('div.game-sub',
       rulesToggle(game),
@@ -341,6 +354,8 @@ function gamePage(game) {
       h('span.badge', svgEl(icons.shield), t('disclaimer.short')),
       !jevAvailable() ? h('span.badge.offline', h('span.dot-off'), t('status.offline')) : null,
     ),
+    h('p.experiment-note',t('experiment.fair'), ' ', t(settings.get('assignmentSource')==='adaptive' ? 'experiment.adaptive' : settings.get('assignmentSource')==='manual' ? 'experiment.manual' : 'experiment.offline')),
+    settings.get('variant')==='generalization' ? h('div.variant-note',h('b',t('experiment.generalization')),h('p',variantText(game.id,settings.get('lang')))) : null,
     banner,
     dataNotice(),
     h('div.game-layout', board, panel.el),
@@ -358,22 +373,27 @@ function gamePage(game) {
   };
   // a request to Jev (or the bot) counts as soon as it is sent, so a switch while it is thinking is caught
   const ctx = { t, h, panel, decide: (...a) => { count(1); return decide(...a); }, pickAction, choiceAnswer, noulAnswer, normalize, toast, settings, track };
-  const instance = game.mount(board, ctx);
-  return { page, instance, panel };
+  const activate = () => game.mount(board, ctx);
+  if (deferMount) board.append(h('p.muted',t('ruleDialog.ready')));
+  const instance = deferMount ? null : activate();
+  return { page, instance, panel, activate };
 }
 
 // ---------------- router ----------------
-function route() {
+let routeEpoch=0;
+async function route() {
+  const epoch=++routeEpoch;
   const hash = location.hash || '#/';
   const m = hash.match(/^#\/play\/(\w+)/);
   const game = m && GAMES.find((g) => g.id === m[1]);
 
   // Keep a running game alive across language / setting changes.
-  if (game && current?.game === game && !current.restart) {
+  if (game && current?.game === game && current.instance && !current.restart) {
     rebuildGameChrome(game);
     return;
   }
   const restart = Boolean(game && current?.game === game);
+  current?.ruleDialog?.remove();
   current?.page?.cleanup?.();
   current?.instance?.destroy?.();
   current = null;
@@ -381,14 +401,28 @@ function route() {
 
   let page;
   if (game) {
+    app.replaceChildren(header(),h('main.page',h('p',t('experiment.loading'))));
+    const assignment=await prepareAssignment(game.id);
+    if(epoch!==routeEpoch) return;
+    settings.useAssignment(assignment);
     current = { game, moves: 0 }; // set before mount so the tracker can count this match's moves
-    const built = gamePage(game);
+    const needsNotice=assignment.variant==='generalization' && !explainedRules.has(`${game.id}:generalization`);
+    const built = gamePage(game,needsNotice);
     Object.assign(current, built);
     page = built.page;
+    current.needsRuleNotice=needsNotice;
   } else if (hash.startsWith('#/about')) page = aboutPage();
   else if (hash.startsWith('#/insights')) page = insightsPage(footer);
   else page = homePage();
   app.replaceChildren(header(), page);
+  if (current?.needsRuleNotice) {
+    current.ruleDialog=showRuleDifference(game,settings.get('variant'),{onConfirm:()=>{
+      if(epoch!==routeEpoch || current?.game!==game) return;
+      explainedRules.add(`${game.id}:generalization`);
+      current.needsRuleNotice=false;
+      current.instance=current.activate();
+    }});
+  }
 }
 
 // Re-render header + game chrome while preserving the game's board/state.

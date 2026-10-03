@@ -1,14 +1,19 @@
+import { S, SchemaError } from '../schema.js';
+
+// Each ruleset has its own closure: no mutable cross-request rule state.
+export function createPd(variant = 'standard') {
+  if (!['standard', 'generalization'].includes(variant)) throw new Error('Unknown ruleset');
+  const generalized = variant === 'generalization';
 // Iterated Prisoner's Dilemma — Jev plays one side.
 //
 // Clean ablation (see shared/prompts.js): base() builds the Raw request from the record;
 // the Hinted request is that identical base plus one `state.analysis` object with the
 // code-computed facts (opponent tendency bucket, rounds remaining). No option carries an
 // analysis suffix here: nothing is computed per option. Both modes take the same payload.
-import { S, SchemaError } from '../schema.js';
 
 const MOVE = S.enumv('C', 'D');
 /** Payoffs [jev, opp] keyed by jev move + opp move. */
-export const PAYOFF = { CC: [3, 3], CD: [0, 5], DC: [5, 0], DD: [1, 1] };
+const PAYOFF = generalized ? { CC: [4, 4], CD: [0, 3], DC: [3, 0], DD: [2, 2] } : { CC: [3, 3], CD: [0, 5], DC: [5, 0], DD: [1, 1] };
 
 const SCHEMA = S.obj({
   round: S.int(1, 50),
@@ -38,8 +43,8 @@ function base({ round, total, history }) {
   });
   return {
     state: {
-      game: "Iterated Prisoner's Dilemma between you and one opponent. Each round both players choose at the same time without seeing the other's choice.",
-      payoffs: PAYOFF_WORDS,
+      game: `${generalized ? 'Repeated coordination (Stag Hunt)' : "Iterated Prisoner’s Dilemma"}. Both choose simultaneously; neither sees the other’s current choice. C means cooperate, D means defect.`,
+      payoffs: Object.fromEntries(Object.entries(PAYOFF).map(([k,v]) => [k, {you:v[0], opponent:v[1]}])),
       goal: 'Maximise your total points over all rounds.',
       round: `Round ${round} of ${total}.`,
       score: { you, opponent: opp },
@@ -78,8 +83,15 @@ function hinted(p) {
   return req;
 }
 
-export default {
+const prompt = {
   schema: SCHEMA,
   build: hinted,
   raw: { schema: SCHEMA, build: base },
 };
+
+return { PAYOFF, prompt };
+}
+
+const standard = createPd();
+export const { PAYOFF } = standard;
+export default standard.prompt;

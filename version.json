@@ -1,12 +1,16 @@
 {
-  "version": "1.2.8",
-  "date": "2026-09-27",
+  "version": "2.0.0",
+  "date": "2026-10-03",
   "notes": {
     "en": [
-      "Small updates"
+      "Six rule variants, fair action selection and dynamically balanced assignments.",
+      "Experiment v2 statistics are separate from historical games.",
+      "Standard and variant rules share one screen, with a rule comparison before switching."
     ],
     "zh": [
-      "细节更新"
+      "六种泛化规则、公平出招与动态均衡分配。",
+      "新实验数据独立统计，历史数据保留。",
+      "常规与泛化共用同一界面，切换时弹窗对比规则。"
     ]
   }
 }

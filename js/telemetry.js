@@ -15,6 +15,7 @@ export const sharingEnabled = () => settings.get('share') !== false && Boolean(e
 const FLUSH_EVERY = 12;
 let queue = [];        // pending events for the current match id
 let matchId = newId();
+let assignmentId = settings.get('assignmentId') || '';
 
 // Anonymous player id: random, generated in this browser, kept in localStorage so matches can be
 // counted per player (how many players, how many games each, who comes back). Not linked to any
@@ -38,7 +39,7 @@ function flush({ beacon = false } = {}) {
   if (!queue.length) return;
   // one consent covers statistics and possible future research, so every batch that is sent carries it
   const pid = playerId();
-  const batch = { s: matchId, ...(pid ? { p: pid } : {}), r: settings.get('share') !== false, l: settings.get('lang'), av: VERSION, e: queue.splice(0, 60) };
+  const batch = { s: matchId, ...(pid ? { p: pid } : {}), b: newId(), aid: assignmentId, r: settings.get('share') !== false, l: settings.get('lang'), av: VERSION, e: queue.splice(0, 60) };
   if (!sharingEnabled()) return;
   const body = JSON.stringify(batch);
   // text/plain keeps this a "simple" CORS request (no preflight), which sendBeacon requires
@@ -55,7 +56,7 @@ function probsOf(res, e) {
   if (!res?.answers || e?.x === 'pred') return {};
   const out = {};
   const main = MAIN.map((k) => res.answers[k]).find((a) => a?.probabilities);
-  if (main) out.pr = Object.fromEntries(Object.entries(main.probabilities).slice(0, 70).map(([k, v]) => [k, Math.round(Number(v) * 1000) / 1000]));
+  if (main) out.pr = Object.fromEntries(Object.entries(main.probabilities).slice(0, 300).map(([k, v]) => [k, Math.round(Number(v) * 1000) / 1000]));
   const nouls = Object.entries(res.answers).filter(([, a]) => a?.type === 'noul' && typeof a.noul === 'number').slice(0, 4);
   if (nouls.length) out.nl = Object.fromEntries(nouls.map(([k, a]) => [k, Math.round(a.noul * 1000) / 1000]));
   return out;
@@ -70,12 +71,14 @@ function probsOf(res, e) {
  *   track.end('win' | 'lose' | 'draw')              match over (human's point of view)
  */
 export function createTracker(game, gameVersion = '1.0') {
+  let sources=new Set(), finished=false, lastModel;
+  const condition=()=>({ex:'2',v:settings.get('variant') || 'standard',opp:settings.get('opponent') || 'jev',as:settings.get('assignmentSource') || 'offline'});
   // m is the opponent actually playing: while Jev is limited the practice bot stands in, so those
   // events count as practice (never as games against Jev).
-  const withMode = (m, pol) => ({ g: game, gv: gameVersion, m, ...(m !== 'practice' ? { pol } : {}) });
+  const withMode = (m, pol) => ({ ...condition(), g: game, gv: gameVersion, m, ...(m !== 'practice' ? { pol } : {}) });
   const base = () => withMode(getJevStatus() ? 'practice' : effectiveMode(), settings.get('policy'));
   // an opponent decision is tagged with the mode and policy it was actually made under
-  const oppBase = (res) => (res?.source === 'jev' && ['hinted', 'raw'].includes(res.mode)
+  const oppBase = (res) => (['jev','luna'].includes(res?.source) && ['hinted', 'raw'].includes(res.mode)
     ? withMode(res.mode, res.policy || settings.get('policy'))
     : withMode('practice'));
   const push = (ev) => {
@@ -85,19 +88,25 @@ export function createTracker(game, gameVersion = '1.0') {
     if (queue.length >= FLUSH_EVERY) flush();
   };
   return {
-    start() { flush(); matchId = newId(); },
+    start() { flush(); matchId = newId(); assignmentId=settings.get('assignmentId') || ''; sources=new Set();finished=false;lastModel=undefined; },
     /** res (optional): the opponent decision this move was played against, in simultaneous games. */
     human(e, res) { push({ ...(res ? oppBase(res) : base()), k: 'move', a: 'human', ...e }); },
     opp(res, e) {
-      const jev = res?.source === 'jev';
-      push({ ...oppBase(res), k: 'move', a: jev ? 'jev' : 'bot', ...(jev && res.model ? { mdl: String(res.model).toLowerCase() } : {}), ...probsOf(res, e), ...e });
+      const jev = ['jev','luna'].includes(res?.source);
+      sources.add(`${res?.source}:${res?.mode}:${res?.model}`); lastModel=jev ? res.model : undefined;
+      push({ ...oppBase(res), k: 'move', a: jev ? res.source : 'bot', ...(jev && res.model ? { mdl: String(res.model).toLowerCase() } : {}), ...probsOf(res, e), ...e });
     },
     /** Calibration: the opponent's probability p (0..1) for yes/no question `ph`, and whether it came true. */
     cal(res, { ph, p, truth }) {
       if (typeof p !== 'number' || Number.isNaN(p) || typeof truth !== 'boolean') return;
-      const jev = res?.source === 'jev';
-      push({ ...oppBase(res), k: 'cal', a: jev ? 'jev' : 'bot', ...(jev && res.model ? { mdl: String(res.model).toLowerCase() } : {}), ph, act: bucketOf(p), x: truth ? 'yes' : 'no' });
+      const jev = ['jev','luna'].includes(res?.source);
+      push({ ...oppBase(res), k: 'cal', a: jev ? res.source : 'bot', ...(jev && res.model ? { mdl: String(res.model).toLowerCase() } : {}), ph, act: bucketOf(p), x: truth ? 'yes' : 'no' });
     },
-    end(result) { push({ ...base(), k: 'end', act: result }); flush(); matchId = newId(); },
+    end(result, score) {
+      if(finished) return; finished=true;
+      const mix=sources.size!==1 || [...sources].some(x=>x.startsWith('local:'));
+      push({ ...base(), k:'end', act:result, mix, mdl:lastModel, ...(score ? {hs:score[0],os:score[1]} : {}) });
+      flush(); matchId=newId();
+    },
   };
 }

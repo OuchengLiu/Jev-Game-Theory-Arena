@@ -2,13 +2,14 @@
 // A pot of 10 coins; the proposer offers k to the responder, who accepts (split) or rejects (both 0).
 
 import { choiceAnswer, noulAnswer } from '../engine.js';
+import { createUltimatum } from '../../shared/games/ultimatum.js';
 import { POT, ROUNDS, OFFERS, profile } from '../../shared/games/ultimatum.js';
 
 const TOTAL = ROUNDS;
 
 // Practice bot (automatic fallback when Jev is unreachable). Proposes around 4, adapting to what the human accepts / rejects;
 // accepts 3+ almost always, smaller offers only sometimes (more often in the last round).
-export function localBot({ role, round, total, offer, history }) {
+export function localBot({ role, round, total, offer, history, variant }) {
   const p = profile(history);
   if (role === 'propose') {
     let target = p.minAccepted ?? 4;
@@ -28,8 +29,8 @@ export function localBot({ role, round, total, offer, history }) {
     };
   }
   const base = [0.03, 0.25, 0.45, 0.8, 0.93, 0.98, 0.99, 0.99, 0.99, 0.99, 0.99][offer];
-  let pa = base;
-  if (round === total && offer > 0) pa = Math.max(pa, 0.7); // no reputation left to build
+  let pa = variant === 'generalization' && offer < 2 ? 0.01 : base;
+  if (round === total && offer > (variant === 'generalization' ? 2 : 0)) pa = Math.max(pa, 0.7); // no reputation left to build
   else if (p.avgOffer !== null && p.avgOffer < 3 && offer < 4) pa *= 0.7; // punish a stingy proposer
   return {
     respond: choiceAnswer({ accept: pa, reject: 1 - pa }),
@@ -67,7 +68,7 @@ const ICON = {
 
 export default {
   id: 'ultimatum',
-  meta: { icon: 'scale', accent: '#0ea5e9', minutes: 3, version: '1.4' },
+  meta: { icon: 'scale', accent: '#0ea5e9', minutes: 3, version: '2.0' },
   strings: {
     en: {
       title: 'Ultimatum Game',
@@ -150,13 +151,15 @@ export default {
   },
 
   mount(board, ctx) {
+    const { rejectionPayoff } = createUltimatum(ctx.settings.get('variant') || 'standard');
+    const generalized = ctx.settings.get('variant') === 'generalization';
     const { t, h, panel } = ctx;
     let alive = true;
     let round, history, score, phase, draft, jevOffer, last, fresh;
     // phase: 'propose' (you pick an offer) | 'thinking' | 'respond' (you answer Jev) | 'reveal' | 'done'
     // anonymous telemetry: never allowed to break the game
     const track = (fn, ...a) => { try { ctx.track?.[fn]?.(...a); } catch { /* ignore */ } };
-    const trackEnd = () => { if (phase === 'done') track('end', score.human > score.jev ? 'win' : score.human < score.jev ? 'lose' : 'draw'); };
+    const trackEnd = () => { if (phase === 'done') track('end', score.human > score.jev ? 'win' : score.human < score.jev ? 'lose' : 'draw', [score.human,score.jev]); };
 
     function reset() {
       track('start');
@@ -176,8 +179,8 @@ export default {
     const payloadBase = () => ({ round, total: TOTAL, history: history.map((x) => ({ ...x })) });
 
     function record(proposer, offer, accepted) {
-      const gHuman = accepted ? (proposer === 'human' ? POT - offer : offer) : 0;
-      const gJev = accepted ? (proposer === 'jev' ? POT - offer : offer) : 0;
+      const gHuman = accepted ? (proposer === 'human' ? POT - offer : offer) : rejectionPayoff[proposer === 'human' ? 0 : 1];
+      const gJev = accepted ? (proposer === 'jev' ? POT - offer : offer) : rejectionPayoff[proposer === 'jev' ? 0 : 1];
       history.push({ proposer, offer, accepted });
       score = { human: score.human + gHuman, jev: score.jev + gJev };
       last = { proposer, offer, accepted, gHuman, gJev };
@@ -385,11 +388,12 @@ export default {
       }
       // reveal / done
       const L = last;
-      const msg = L.proposer === 'human'
+      const msg = generalized && !L.accepted ? (ctx.settings.get('lang')==='zh' ? '提议被拒绝，双方获得各自的保底收益。' : 'Offer rejected. Each side receives its outside option.') : L.proposer === 'human'
         ? t(L.accepted ? 'ultimatum.jevAccepted' : 'ultimatum.jevRejected', { k: L.offer })
         : t(L.accepted ? 'ultimatum.youAccepted' : 'ultimatum.youRejected', { k: L.offer });
       const left = L.proposer === 'human' ? POT - L.offer : L.offer;
       return [
+        generalized && !L.accepted ? h('p', `${t('you')} +${L.gHuman} · ${t('opp')} +${L.gJev}`) : null,
         h('p.ug-verdict', { class: L.accepted ? 'ok' : 'no' }, h('span', { html: L.accepted ? ICON.ok : ICON.no }), msg),
         L.accepted
           ? table({ left, proposer: L.proposer })
@@ -424,8 +428,8 @@ export default {
           h('tbody', history.map((r, i) => {
             const humanProp = r.proposer === 'human';
             const youShare = humanProp ? POT - r.offer : r.offer;
-            const gh = r.accepted ? youShare : 0;
-            const gj = r.accepted ? POT - youShare : 0;
+            const gh = r.accepted ? youShare : rejectionPayoff[humanProp ? 0 : 1];
+            const gj = r.accepted ? POT - youShare : rejectionPayoff[humanProp ? 1 : 0];
             return h('tr', { class: `${r.accepted ? 'ok' : 'no'} ${fresh && i === history.length - 1 ? 'fresh' : ''}` },
               h('td.rn', i + 1),
               h('td', h('span.ug-pdot', { class: humanProp ? 'you' : 'jev' }), humanProp ? t('you') : t('opp')),

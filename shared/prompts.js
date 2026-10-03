@@ -18,19 +18,23 @@
 //   * small, relevant state
 
 import { check, SchemaError } from './schema.js';
-import pd from './games/pd.js';
-import rps from './games/rps.js';
-import ultimatum from './games/ultimatum.js';
-import holdem from './games/holdem.js';
-import liarsdice from './games/liarsdice.js';
-import blotto from './games/blotto.js';
+import { createPd } from './games/pd.js';
+import { createRps } from './games/rps.js';
+import { createUltimatum } from './games/ultimatum.js';
+import { createHoldemPrompt } from './games/holdem.js';
+import { createDicePrompt } from './games/liarsdice.js';
+import { createBlottoRules } from './games/blotto.js';
 
 export const MODEL = 'jev-latest';
-export const GAME_PROMPTS = { pd, rps, ultimatum, holdem, liarsdice, blotto };
+const factories = {pd:createPd,rps:createRps,ultimatum:createUltimatum,holdem:createHoldemPrompt,liarsdice:createDicePrompt,blotto:createBlottoRules};
+export const PROMPTS = Object.fromEntries(['standard','generalization'].map(v=>[v,Object.fromEntries(Object.entries(factories).map(([k,f])=>[k,f(v).prompt]))]));
+export const GAME_PROMPTS = PROMPTS.standard;
 
 export const MODES = ['hinted', 'raw'];
 
-export function buildJevRequest(game, payload, mode = 'hinted') {
+export function buildJevRequest(game, payload, mode = 'hinted', variant = 'standard') {
+  if (!Object.hasOwn(PROMPTS,variant)) throw new SchemaError('unknown ruleset');
+  const GAME_PROMPTS = PROMPTS[variant];
   const g = Object.prototype.hasOwnProperty.call(GAME_PROMPTS, game) ? GAME_PROMPTS[game] : null;
   if (!g) throw new SchemaError('unknown game');
   if (!MODES.includes(mode)) throw new SchemaError('unknown mode');

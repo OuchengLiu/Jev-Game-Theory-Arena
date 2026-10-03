@@ -36,8 +36,8 @@ async function postJson(url, body, headers = {}) {
   }
 }
 
-async function askJev(game, payload, mode) {
-  const body = { game, mode, payload };
+async function askJev(game, payload, mode, condition) {
+  const body = { game, mode, payload, experiment:'2', ...condition };
   if (!CONFIG.turnstileSiteKey) return postJson(CONFIG.proxyUrl, body);
   try {
     return await postJson(CONFIG.proxyUrl, body, { 'X-Session': await getSession() });
@@ -128,18 +128,19 @@ export async function decide(game, makePayload, local) {
   const t0 = performance.now();
   const build = typeof makePayload === 'function' ? makePayload : () => makePayload;
   const mode = effectiveMode();
+  const condition={variant:settings.get('variant'),opponent:settings.get('opponent')};
+  const policy=settings.get('policy');
   let error;
   if (mode !== 'practice') {
     const limited = getJevStatus();
     if (limited) error = limited.code;
     else {
       try {
-        const data = await askJev(game, build(mode), mode);
+        const data = await askJev(game, build(mode), mode, condition);
         // Policy 'greedy': Jev plays its top-rated move (like temperature 0); 'sample': a move is
         // drawn in proportion to its probabilities. pickAction reads the marker.
-        const policy = settings.get('policy');
         if (policy === 'greedy') for (const a of Object.values(data.answers || {})) if (a && a.type === 'choice') Object.defineProperty(a, 'greedy', { value: true });
-        return { answers: data.answers, model: data.model, source: 'jev', mode, policy, ms: Math.round(performance.now() - t0) };
+        return { answers: data.answers, model: data.model, source: condition.opponent, ...condition, mode, policy, ms: Math.round(performance.now() - t0) };
       } catch (e) {
         error = classify(e);
         startCooldown(error, e.retryAfter);
@@ -147,7 +148,7 @@ export async function decide(game, makePayload, local) {
       }
     }
   }
-  const answers = local(build('hinted'));
+  const answers = local({...build('hinted'),variant:condition.variant});
   const elapsed = performance.now() - t0;
   if (elapsed < 450) await sleep(450 - elapsed); // give the bot a moment to "think"
   return { answers, model: 'practice bot', source: 'local', mode, ms: Math.round(performance.now() - t0), error };

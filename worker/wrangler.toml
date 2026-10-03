@@ -66,3 +66,12 @@ class_name = "Guard"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Guard"]
+
+# Atomic experiment allocation; independent of the daily usage guard.
+[[durable_objects.bindings]]
+name = "EXPERIMENTS"
+class_name = "ExperimentAllocator"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ExperimentAllocator"]

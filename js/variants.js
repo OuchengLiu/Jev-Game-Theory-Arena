@@ -1,0 +1,11 @@
+export const VARIANT_TEXT = {
+ pd: {
+  zh:'协作博弈：双方合作各得4分；单方背叛时，背叛者得3分、合作者得0分；双方背叛各得2分。对方合作时合作更好，对方背叛时背叛更好。十回合，目标是累积自己的收益。',
+  en:'Coordination game: mutual cooperation earns 4 each; unilateral defection earns the defector 3 and the cooperator 0; mutual defection earns 2 each. Cooperating is better against cooperation; defecting is better against defection. Ten rounds; maximize your own total.'},
+ rps:{zh:'反向猜拳：石头胜布，布胜剪刀，剪刀胜石头；同招平局。双方同时、独立出拳，模型只看到此前回合。二十回合，赢的回合多者胜。',en:'Reverse RPS: rock beats paper, paper beats scissors, scissors beats rock. Same throws draw. Both choose independently using only past rounds. Most round wins across twenty rounds wins.'},
+ blotto:{zh:'10名士兵，四地域：平原1分，比兵力；隘口2分，最多计3人；要塞3分，至少领先2人才获胜；港口4分，每完整2人计1战力。平局地域双方不得分，地域总分高者赢本轮。秘密分兵，七轮决胜。',en:'Split 10 soldiers secretly across four territories. Plain: 1 point, more troops wins. Pass: 2 points, only the first 3 troops count. Fort: 3 points, requires a lead of at least 2 troops. Port: 4 points, each complete pair is one strength. Tied fields award no points. Higher total wins the round; most wins over seven rounds wins.'},
+ ultimatum:{zh:'仍分10枚金币，接受则按提议分配；拒绝时，提议者保底得1枚，回应者得2枚。八回合轮换角色。拒绝也有收益，需要比较接受和拒绝的结果。',en:'Split 10 coins. Acceptance implements the proposal. Rejection gives the proposer 1 coin and the responder 2. Roles alternate for eight rounds. Compare the offer with the outside option.'},
+ liarsdice:{zh:'无万能点：1只算1，可以叫1至6任意点数。双方各五颗暗骰，轮流提高叫点或开盅；叫点必须增加数量，或数量相同而点数更高。开盅后判断真假，输者减一骰并开始下轮。',en:'No wild dice: 1 counts only as 1; bids may name any face from 1 through 6. Each player starts with five hidden dice. Raise the quantity or, at the same quantity, the face; alternatively challenge. The loser of the challenge loses one die and opens the next round.'},
+ holdem:{zh:'摊牌必须恰好使用1张自己的手牌和4张公共牌。不能直接使用全部公共牌，也不能同时使用两张手牌。普通牌型大小、盲注、下注和全下规则不变。提示模式的胜率也按此限制计算。',en:'At showdown use exactly ONE hole card and FOUR community cards. You cannot play the board or both hole cards. Normal five-card rankings, blinds, betting and all-ins apply. Hinted equity uses the same constraint.'},
+};
+export const variantText=(game,lang)=>VARIANT_TEXT[game]?.[lang] || VARIANT_TEXT[game]?.en || '';

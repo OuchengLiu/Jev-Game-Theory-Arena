@@ -2,6 +2,7 @@
 // Data: GET <proxy>/stats (pre-aggregated counts, cached 5 min). Only real games are counted;
 // a game with no records yet shows empty charts.
 
+import { experimentInsights } from './experiment-insights.js';
 import { t, registerStrings } from './i18n.js';
 import { settings } from './settings.js';
 import { CONFIG } from './config.js';
@@ -112,7 +113,7 @@ async function loadStats() {
     const j = await r.json();
     if (!j.enabled) return null;
     const rows = j.rows.map((a) => Object.fromEntries(j.cols.map((c, i) => [c, a[i]])));
-    return { rows, updated: j.updated };
+    return { ...j, rows };
   } catch { return null; }
 }
 
@@ -131,14 +132,18 @@ export function insightsPage(footer) {
   // existed were all played "by odds".
   let policy = 'greedy';
   let version = 'latest';
+  let cohort='2';
   const cmpVer = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; };
   const draw = (data) => {
+    const cohortControl=segmented([{value:'2',label:lang==='zh'?'新实验 v2':'Experiment v2'},{value:'1',label:lang==='zh'?'历史数据':'Historical data'}],cohort,v=>{cohort=v;draw(data);});
+    if(cohort==='2') {body.replaceChildren(cohortControl,experimentInsights(data,lang));return;}
     const latest = {};
     for (const r of data.rows) if (!latest[r.game] || cmpVer(r.game_ver, latest[r.game]) > 0) latest[r.game] = r.game_ver;
     // practice rows and bot moves carry no meaningful policy; rows without one predate policies ('sample')
     const rows = data.rows.filter((r) => (r.mode === 'practice' || r.actor === 'bot' || (r.policy || 'sample') === policy)
       && (version === 'all' || r.game_ver === latest[r.game]));
     body.replaceChildren(
+      cohortControl,
       h('div.ins-filter',
         h('span', t('policy.label')),
         segmented([{ value: 'greedy', label: t('policy.greedy') }, { value: 'sample', label: t('policy.sample') }], policy, (v) => { policy = v; draw(data); }),

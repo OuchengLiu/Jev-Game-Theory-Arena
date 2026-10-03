@@ -1,3 +1,9 @@
+import { S, SchemaError } from '../schema.js';
+
+// Each ruleset has its own closure: no mutable cross-request rule state.
+export function createRps(variant = 'standard') {
+  if (!['standard', 'generalization'].includes(variant)) throw new Error('Unknown ruleset');
+  const generalized = variant === 'generalization';
 // Rock-Paper-Scissors, "predict the human". Jev never picks its own throw:
 // it only predicts the human's next throw; code turns that into a counter-strategy.
 //
@@ -5,13 +11,12 @@
 // Hinted = that identical base + `state.analysis` (pattern mining done here in code:
 // favourite throw, win-stay / lose-shift habits, sequences, clues) + an " Analysis: …"
 // suffix on each throw saying which clues point to it. Both modes take the same payload.
-import { S, SchemaError } from '../schema.js';
 
-export const THROWS = ['rock', 'paper', 'scissors'];
+const THROWS = ['rock', 'paper', 'scissors'];
 /** COUNTER[x] is the throw that beats x. */
-export const COUNTER = { rock: 'paper', paper: 'scissors', scissors: 'rock' };
+const COUNTER = generalized ? { rock: 'scissors', paper: 'rock', scissors: 'paper' } : { rock: 'paper', paper: 'scissors', scissors: 'rock' };
 /** Outcome of one round from the human's point of view. */
-export const outcomeOf = (human, jev) => (human === jev ? 'draw' : COUNTER[jev] === human ? 'human_won' : 'jev_won');
+const outcomeOf = (human, jev) => (human === jev ? 'draw' : COUNTER[jev] === human ? 'human_won' : 'jev_won');
 
 const THROW = S.enumv(THROWS);
 const OUTCOME = S.enumv('human_won', 'jev_won', 'draw');
@@ -19,13 +24,13 @@ const OUTCOME = S.enumv('human_won', 'jev_won', 'draw');
 // How the human's throw relates to their own previous throw.
 //  stay: same throw again · up: the throw that beats their previous one · down: the throw their previous one beats
 const relOf = (prev, next) => (next === prev ? 'stay' : next === COUNTER[prev] ? 'up' : 'down');
-export const applyRel = (prev, rel) => (rel === 'stay' ? prev : rel === 'up' ? COUNTER[prev] : COUNTER[COUNTER[prev]]);
+const applyRel = (prev, rel) => (rel === 'stay' ? prev : rel === 'up' ? COUNTER[prev] : COUNTER[COUNTER[prev]]);
 const REL_WORDS = {
   stay: 'stays with the same throw',
   up: 'switches to the throw that would have beaten their previous throw',
   down: 'switches to the throw that their previous throw would have beaten',
 };
-export const COND = { human_won: 'won', jev_won: 'lost', draw: 'draw' }; // human perspective
+const COND = { human_won: 'won', jev_won: 'lost', draw: 'draw' }; // human perspective
 
 function dominant(counts, minN, minShare) {
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
@@ -36,7 +41,7 @@ function dominant(counts, minN, minShare) {
 }
 
 /** Pure pattern analysis of the human's play (shared by the prompt and the built-in bot). */
-export function analyze(history) {
+function analyze(history) {
   const n = history.length;
   const counts = { rock: 0, paper: 0, scissors: 0 };
   history.forEach((r) => { counts[r.human] += 1; });
@@ -94,13 +99,14 @@ function base({ round, total, history }) {
   });
   return {
     state: {
-      game: 'Rock-paper-scissors against a human opponent. Rock beats scissors, scissors beats paper, paper beats rock; the same throw is a draw. Both players throw at the same time.',
-      goal: "Predict the opponent's next throw. Your prediction is used to pick your counter-throw.",
+      game: `${generalized ? 'Reverse rock-paper-scissors: rock beats paper, paper beats scissors, scissors beats rock' : 'Rock-paper-scissors: rock beats scissors, scissors beats paper, paper beats rock'}. Same throws draw. Both choose simultaneously without seeing the current opposing move.`,
+      goal: 'Choose your own throw to win the most rounds. Predict the opponent separately for analysis.',
       round: `Round ${round} of ${total}.`,
       score,
       history: rounds.length ? rounds : ['No rounds played yet.'],
     },
     questions: {
+      action: { type: 'choice', instructions: 'Which throw do YOU play?', criteria: Object.fromEntries(THROWS.map(x => [x, `You throw ${x}.`])) },
       predict: {
         type: 'choice',
         instructions: 'Which throw will the opponent play next round?',
@@ -147,8 +153,15 @@ function hinted(p) {
   return req;
 }
 
-export default {
+const prompt = {
   schema: SCHEMA,
   build: hinted,
   raw: { schema: SCHEMA, build: base },
 };
+
+return { THROWS, COUNTER, outcomeOf, applyRel, COND, analyze, prompt };
+}
+
+const standard = createRps();
+export const { THROWS, COUNTER, outcomeOf, applyRel, COND, analyze } = standard;
+export default standard.prompt;

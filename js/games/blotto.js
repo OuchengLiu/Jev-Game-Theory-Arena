@@ -7,8 +7,9 @@ import {
   ALLOC_IDS, ROUNDS, SOLDIERS, FIELD_KEYS, parseAlloc, makePayloads, botWeights, resolve,
   randomAlloc, tendencies,
 } from './blotto-core.js';
+import { createBlotto } from './blotto-core.js';
 
-// Built-in bot: softmax over the shortlist by estimated win rate (see botWeights).
+// Built-in bot: softmax over the full action set by estimated win rate (see botWeights).
 function localBot(payload) {
   const { action, stacks } = botWeights(payload);
   return { action: choiceAnswer(action), opp_stacks: noulAnswer(stacks) };
@@ -94,7 +95,7 @@ const sum = (a) => a.reduce((x, y) => x + y, 0);
 
 export default {
   id: 'blotto',
-  meta: { icon: '⚔️', accent: '#e11d48', minutes: 4, version: '1.4' },
+  meta: { icon: '⚔️', accent: '#e11d48', minutes: 4, version: '2.0' },
   strings: {
     en: {
       title: 'Colonel Blotto',
@@ -189,8 +190,13 @@ export default {
   },
 
   mount(board, ctx) {
+    const localBot = payload => { const {action,stacks}=botWeights(payload); return {action:choiceAnswer(action),opp_stacks:noulAnswer(stacks)}; };
+    const variant = ctx.settings.get('variant') || 'standard';
+    const generalized = variant === 'generalization';
+    const { ALLOC_IDS, ROUNDS, SOLDIERS, FIELD_KEYS, parseAlloc, makePayloads, botWeights, resolve,
+  randomAlloc, tendencies } = createBlotto(variant);
     const { t, h, panel } = ctx;
-    const L = (k, v) => t(`blotto.${k}`, v);
+    const L = (k, v) => generalized && ['balanced','keys','q'].includes(k) ? (ctx.settings.get('lang') === 'zh' ? {balanced:'均衡分兵',keys:'1–4 增派 · Shift 撤回 · 回车出兵',q:'四地域分兵'} : {balanced:'Balanced split',keys:'1–4 add · Shift removes · Enter deploys',q:'Four-territory allocation'})[k] : t(`blotto.${k}`, v);
     let alive = true;
     let gen = 0;
     const timers = new Set();
@@ -206,15 +212,15 @@ export default {
     const placed = () => sum(alloc);
     // anonymous telemetry: never allowed to break the game
     const track = (fn, ...a) => { try { ctx.track?.[fn]?.(...a); } catch { /* ignore */ } };
-    const shape = (a) => [...a].sort((x, y) => y - x).join('-');
-    const fieldName = (i) => L(FIELD_KEYS[i]);
+    const shape = (a) => (generalized ? a : [...a].sort((x,y)=>y-x)).join('-');
+    const fieldName = (i) => generalized ? (ctx.settings.get('lang') === 'zh' ? ['平原','隘口','要塞','港口'] : ['Plain','Pass','Fort','Port'])[i] : L(FIELD_KEYS[i]);
 
     function newGame() {
       track('start');
       gen++;
       timers.forEach(clearTimeout);
       timers.clear();
-      alloc = [0, 0, 0];
+      alloc = FIELD_KEYS.map(()=>0);
       history = []; // Jev's view: { jev, opp } arrays (opp = human)
       score = { you: 0, jev: 0, draw: 0 };
       phase = 'plan';
@@ -271,9 +277,9 @@ export default {
     }
 
     function presetBalanced() {
-      const shapes = [[4, 3, 3], [3, 4, 3], [3, 3, 4]];
+      const shapes = generalized ? [[3,3,2,2],[2,2,4,2],[2,2,2,4],[1,3,2,4]] : [[4, 3, 3], [3, 4, 3], [3, 3, 4]];
       const cur = shapes.findIndex((s) => s.join() === alloc.join());
-      balancedTurn = cur >= 0 ? (cur + 1) % 3 : 0;
+      balancedTurn = cur >= 0 ? (cur + 1) % shapes.length : 0;
       setAlloc(shapes[balancedTurn]);
     }
 
@@ -291,7 +297,7 @@ export default {
         const { hinted, raw, candidateIds } = makePayloads(history, ROUNDS);
         res = await ctx.decide('blotto', (mode) => (mode === 'raw' ? raw : hinted), localBot);
         if (!alive || g !== gen) return;
-        legal = res.source === 'jev' && res.mode === 'raw' ? ALLOC_IDS : candidateIds;
+        legal = ALLOC_IDS;
         jevId = ctx.pickAction(res.answers?.action, legal);
       } catch (e) {
         console.error('[blotto]', e);
@@ -323,12 +329,12 @@ export default {
       // (a player leaving during the animation would otherwise leave a match without an end)
       if (history.length + 1 >= ROUNDS) {
         const you2 = score.you + (result > 0 ? 1 : 0), jev2 = score.jev + (result < 0 ? 1 : 0);
-        track('end', you2 > jev2 ? 'win' : you2 < jev2 ? 'lose' : 'draw');
+        track('end', you2 > jev2 ? 'win' : you2 < jev2 ? 'lose' : 'draw', [you2,jev2]);
       }
       phase = 'reveal';
       render();
       const quick = reducedMotion();
-      for (let k = 0; k < 3; k++) {
+      for (let k = 0; k < FIELD_KEYS.length; k++) {
         await sleep(quick ? 0 : k === 0 ? 380 : 720);
         if (!alive || g !== gen) return;
         reveal.step = k + 1;
@@ -348,7 +354,7 @@ export default {
       if (phase !== 'done') return;
       phase = 'plan';
       reveal = null;
-      alloc = [0, 0, 0];
+      alloc = FIELD_KEYS.map(()=>0);
       render();
     }
 
@@ -358,8 +364,8 @@ export default {
       if (!alive || !board.isConnected || e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = e.target?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable) return;
-      const m = /^Digit([1-3])$/.exec(e.code) || /^Numpad([1-3])$/.exec(e.code);
-      if (m && phase === 'plan') {
+      const m = /^Digit([1-4])$/.exec(e.code) || /^Numpad([1-4])$/.exec(e.code);
+      if (m && Number(m[1])<=FIELD_KEYS.length && phase === 'plan') {
         e.preventDefault();
         step(Number(m[1]) - 1, e.shiftKey ? -1 : 1);
         return;
@@ -399,8 +405,9 @@ export default {
         tokens(shown ? reveal.jev[i] : 0, 'bl-tokens-jev', { stagger: isFresh }),
       ),
       h('div.bl-site',
-        h('div.bl-emblem', { html: EMBLEMS[FIELD_KEYS[i]] }),
+        h('div.bl-emblem', { html: EMBLEMS[FIELD_KEYS[i]] || EMBLEMS[i === 3 ? 'ford' : 'ridge'] }),
         h('div.bl-name', h('span', fieldName(i))),
+        generalized ? h('small', ctx.settings.get('lang') === 'zh' ? ['1分 · 比兵力','2分 · 最多计3人','3分 · 领先2人','4分 · 每2人1战力'][i] : ['1 pt · troop count','2 pts · cap 3 troops','3 pts · lead by 2','4 pts · pairs count'][i]) : null,
         win ? h('div.bl-ribbon', { class: `bl-ribbon-${win}` }, win === 'you' ? L('yours') : win === 'jev' ? L('jevs') : L('even')) : null,
       ),
       h('div.bl-side.bl-side-you',
@@ -421,7 +428,7 @@ export default {
 
     function mapView() {
       const roundNo = reveal ? reveal.round : Math.min(history.length + 1, ROUNDS);
-      return h('div.bl-map', { 'data-phase': phase },
+      return h('div.bl-map', { 'data-phase': phase, class: generalized ? 'bl-four' : '' },
         h('div.bl-terrain-wrap', { html: TERRAIN }),
         h('div.bl-map-head',
           h('span.bl-map-title', L('mapTitle'), h('span.bl-map-round', h('i', ' · '), `${roundNo} / ${ROUNDS}`)),
@@ -431,7 +438,7 @@ export default {
             h('span.bl-compass-wrap', { html: COMPASS }),
           ),
         ),
-        h('div.bl-fields', [0, 1, 2].map(fieldView)),
+        h('div.bl-fields', FIELD_KEYS.map((_,i)=>fieldView(i))),
         phase === 'thinking' ? h('div.bl-thinking', h('span.bl-quill'), L('thinking')) : null,
       );
     }
@@ -451,7 +458,7 @@ export default {
           h('button.btn.ghost.bl-preset', { type: 'button', 'data-focus': 'balanced', onclick: presetBalanced }, L('balanced')),
           h('button.btn.ghost.bl-preset', { type: 'button', 'data-focus': 'random', onclick: () => setAlloc(randomAlloc()) }, L('random')),
           last ? h('button.btn.ghost.bl-preset', { type: 'button', 'data-focus': 'same', onclick: () => setAlloc(last) }, L('same')) : null,
-          h('button.btn.ghost.bl-preset', { type: 'button', 'data-focus': 'clear', disabled: placed() === 0, onclick: () => setAlloc([0, 0, 0]) }, L('clear')),
+          h('button.btn.ghost.bl-preset', { type: 'button', 'data-focus': 'clear', disabled: placed() === 0, onclick: () => setAlloc(FIELD_KEYS.map(()=>0)) }, L('clear')),
         ),
         h('button.btn.lg.bl-deploy', { type: 'button', 'data-focus': 'deploy', disabled: left !== 0, onclick: deploy }, L('deploy')),
         h('p.bl-keys.muted', L('keys')),
@@ -462,19 +469,19 @@ export default {
       const r = reveal;
       const settled = r && (phase === 'done' || phase === 'over');
       if (!settled) return h('div.bl-verdict.bl-pending', { 'aria-hidden': 'true' });
-      const a = r.fields.filter((x) => x > 0).length;
-      const b = r.fields.filter((x) => x < 0).length;
+      const a = r.fields.reduce((s,x,i)=>s+(x>0?(generalized?i+1:1):0),0);
+      const b = r.fields.reduce((s,x,i)=>s+(x<0?(generalized?i+1:1):0),0);
       const key = r.result > 0 ? 'roundWin' : r.result < 0 ? 'roundLose' : 'roundDraw';
       return h('div.bl-verdict', { class: `bl-v-${r.result > 0 ? 'you' : r.result < 0 ? 'jev' : 'tie'}` },
         h('h3', L(key, { n: r.round })),
-        h('p.muted', L('tally', { a, b })),
+        h('p.muted', generalized ? (ctx.settings.get('lang')==='zh' ? `地域得分 ${a}–${b}` : `Territory points ${a}–${b}`) : L('tally', { a, b })),
         phase === 'done' ? h('button.btn.lg', { type: 'button', 'data-focus': 'next', onclick: nextRound }, L('next')) : null,
       );
     }
 
     function notesView() {
       const opp = history.map((x) => x.opp);
-      if (!opp.length) return null;
+      if (!opp.length || generalized) return null;
       const ts = tendencies(opp).filter((k) => k !== 'no_history');
       if (!ts.length) return null;
       return h('div.bl-notes',
@@ -484,7 +491,7 @@ export default {
     }
 
     function splitCells(mine, theirs, cls) {
-      return h('span.bl-split', { class: cls }, mine.map((v, k) => h('b', { class: v > theirs[k] ? 'w' : v < theirs[k] ? 'l' : 't' }, v)));
+      return h('span.bl-split', { class: cls }, mine.map((v, k) => h('b', { class: resolve(mine,theirs).fields[k] > 0 ? 'w' : resolve(mine,theirs).fields[k] < 0 ? 'l' : 't' }, v)));
     }
 
     function logView() {
@@ -495,7 +502,7 @@ export default {
           h('table',
             h('thead', h('tr',
               h('th', L('colRound')),
-              h('th', h('span.bl-th-you', L('colYou')), h('small', FIELD_KEYS.map((f) => L(f)).join(' · '))),
+              h('th', h('span.bl-th-you', L('colYou')), h('small', FIELD_KEYS.map((_,i) => fieldName(i)).join(' · '))),
               h('th', h('span.bl-th-jev', L('colJev'))),
               h('th', L('colResult')),
             )),
