@@ -2,7 +2,7 @@
 // Data: GET <proxy>/stats (pre-aggregated counts, cached 5 min). Only real games are counted;
 // a game with no records yet shows empty charts.
 
-import { experimentInsights } from './experiment-insights.js';
+import { insightRows } from './insights-data.js';
 import { t, registerStrings } from './i18n.js';
 import { settings } from './settings.js';
 import { CONFIG } from './config.js';
@@ -23,7 +23,7 @@ registerStrings('ins', {
     series_human: 'Humans', 'series_jev-hinted': 'Jev · Hinted', 'series_jev-raw': 'Jev · Raw', series_bot: 'Practice bot',
     table: 'Table', chart: 'Chart',
     version: 'Version', v_latest: 'Current', v_all: 'All versions',
-    v_latest_note: 'Showing each game’s current version only.', v_all_note: 'Includes earlier game versions, whose prompts differed.',
+    v_latest_note: 'Showing each game’s current version only.', v_all_note: 'Includes historical standard games and new records. Rules and prompts may differ across versions; this view describes overall play, not a controlled model comparison.',
     low: 'small sample', low_note: 'Faded marks are based on fewer than {n} records; * marks a small-sample rate.',
     pd_chart: 'Cooperation rate by round', pd_note: 'Share of players who cooperated in each round. Watch for end-game defection in the last rounds.',
     rps_chart: 'Throw mix', rps_note: 'The Nash equilibrium is exactly 1/3 each. Any tilt away from it can be exploited.',
@@ -62,7 +62,7 @@ registerStrings('ins', {
     series_human: '人类', 'series_jev-hinted': 'Jev · 提示模式', 'series_jev-raw': 'Jev · 直觉模式', series_bot: '练习机器人',
     table: '表格', chart: '图表',
     version: '版本', v_latest: '当前版本', v_all: '全部版本',
-    v_latest_note: '只显示各游戏当前版本的数据。', v_all_note: '包含旧版本的数据，旧版本的提示词与现在不同。',
+    v_latest_note: '只显示各游戏当前版本的数据。', v_all_note: '包含常规历史对局和新记录；跨版本规则、提示词可能不同，此视图用于浏览整体情况，不代表严格的模型对照实验。',
     low: '样本较少', low_note: '浅色的柱子和点背后不足 {n} 条记录；数字后的 * 表示样本较少。',
     pd_chart: '各回合的合作率', pd_note: '每一回合选择合作的比例。留意最后几回合的“终局背叛”。',
     rps_chart: '出拳分布', rps_note: '纳什均衡恰好是各 1/3，任何偏离都可能被针对。',
@@ -118,7 +118,7 @@ async function loadStats() {
 }
 
 // ---------- page ----------
-export function insightsPage(footer) {
+export function insightsPage(footer, games = []) {
   const lang = settings.get('lang');
   const page = h('main.page.insights');
   const body = h('div.ins-body', h('div.ins-loading', h('span.dot'), h('span.dot'), h('span.dot')));
@@ -130,27 +130,19 @@ export function insightsPage(footer) {
   );
   // Jev's two play policies are analysed separately, never mixed. Rows from before policies
   // existed were all played "by odds".
-  let policy = 'greedy';
-  let version = 'latest';
-  let cohort='2';
-  const cmpVer = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; };
+  let policy = 'greedy', version = 'all', variant = 'standard';
+  const currentVersions=Object.fromEntries(games.map(g=>[g.id,g.meta.version]));
   const draw = (data) => {
-    const cohortControl=segmented([{value:'2',label:lang==='zh'?'新实验 v2':'Experiment v2'},{value:'1',label:lang==='zh'?'历史数据':'Historical data'}],cohort,v=>{cohort=v;draw(data);});
-    if(cohort==='2') {body.replaceChildren(cohortControl,experimentInsights(data,lang,render));return;}
-    const latest = {};
-    for (const r of data.rows) if (!latest[r.game] || cmpVer(r.game_ver, latest[r.game]) > 0) latest[r.game] = r.game_ver;
-    // practice rows and bot moves carry no meaningful policy; rows without one predate policies ('sample')
-    const rows = data.rows.filter((r) => (r.mode === 'practice' || r.actor === 'bot' || (r.policy || 'sample') === policy)
-      && (version === 'all' || r.game_ver === latest[r.game]));
+    const rows=insightRows(data,{variant,version,policy,currentVersions});
+    const group=(label,values,current,change)=>h('div.control',
+      h('span.control-label',label),segmented(values,current,v=>{change(v);draw(data);}));
     body.replaceChildren(
-      cohortControl,
-      h('div.ins-filter',
-        h('span', t('policy.label')),
-        segmented([{ value: 'greedy', label: t('policy.greedy') }, { value: 'sample', label: t('policy.sample') }], policy, (v) => { policy = v; draw(data); }),
-        h('span', t('ins.version')),
-        segmented([{ value: 'latest', label: t('ins.v_latest') }, { value: 'all', label: t('ins.v_all') }], version, (v) => { version = v; draw(data); }),
-        h('small.muted', t(`policy.info.${policy}`), ' ', t(version === 'latest' ? 'ins.v_latest_note' : 'ins.v_all_note'))),
-      ...render({ ...data, rows }, lang));
+      h('div.ins-filter.ins-filter-bar',
+        group(t('ins.version'),[{value:'latest',label:t('ins.v_latest')},{value:'all',label:t('ins.v_all')}],version,v=>version=v),
+        group(t('policy.label'),[{value:'greedy',label:t('policy.greedy')},{value:'sample',label:t('policy.sample')}],policy,v=>policy=v),
+        group(t('experiment.rules'),[{value:'standard',label:t('experiment.standard')},{value:'generalization',label:t('experiment.generalization')}],variant,v=>variant=v)),
+      h('p.ins-filter-note.muted',t(version==='latest'?'ins.v_latest_note':'ins.v_all_note')),
+      ...render({...data,rows,variant},lang));
   };
   loadStats().then((data) => {
     if (data) draw(data);

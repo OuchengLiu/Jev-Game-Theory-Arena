@@ -593,3 +593,9 @@ button { font: inherit; color: inherit; }
 
 /* Rule confirmation uses the original confirmation dialog, typography and actions. */
 .rule-dialog { max-height:calc(100dvh - 40px); overflow:auto; }
+
+/* One insights toolbar, using the same labeled segmented controls as the game pages. */
+.ins-filter-bar { align-items:flex-start; gap:20px 28px; margin:24px 0 12px; }
+.ins-filter-bar .control { min-width:0; }
+.ins-filter-note { font-size:13px; line-height:1.6; margin:0 0 28px; max-width:860px; }
+@media(max-width:560px) { .ins-filter-bar { gap:16px; } .ins-filter-bar .control { width:100%; } }

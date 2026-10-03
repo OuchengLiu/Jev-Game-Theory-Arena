@@ -410,7 +410,7 @@ async function route() {
     page = built.page;
     current.needsRuleNotice=needsNotice;
   } else if (hash.startsWith('#/about')) page = aboutPage();
-  else if (hash.startsWith('#/insights')) page = insightsPage(footer);
+  else if (hash.startsWith('#/insights')) page = insightsPage(footer, GAMES);
   else page = homePage();
   app.replaceChildren(header(), page);
   if (current?.needsRuleNotice) {
