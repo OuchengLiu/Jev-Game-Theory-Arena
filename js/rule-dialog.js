@@ -35,13 +35,12 @@ const STANDARD = {
 export function showRuleDifference(game, target, { switching=false, restart=false, onConfirm }={}) {
   const lang=settings.get('lang');
   let confirmed=!switching;
-  const card=(variant, text)=>h('section.rule-option', {class:variant===target?'selected':''},
-    h('h4',t(`experiment.${variant}`)),h('p',text));
-  const dlg=h('dialog.confirm.rule-dialog',{'aria-labelledby':'rule-dialog-title','aria-describedby':'rule-dialog-selected'},
+  const card=(variant, text)=>h('div.rule-option',
+    h('p',h('b',t(`experiment.${variant}`)), ' · ', text));
+  const dlg=h('dialog.confirm.rule-dialog',{style:{'--accent':game.meta.accent},'aria-labelledby':'rule-dialog-title','aria-describedby':'rule-dialog-selected'},
     h('h3#rule-dialog-title',t('ruleDialog.title')),
     h('p#rule-dialog-selected.rule-selected',t('ruleDialog.selected',{variant:t(`experiment.${target}`)})),
     h('div.rule-comparison',card('standard',STANDARD[game.id]?.[lang] || STANDARD[game.id]?.en),card('generalization',variantText(game.id,lang))),
-    h('p',t('ruleDialog.same')),
     restart ? h('p.rule-restart',t('ruleDialog.restart')) : null,
     h('div.confirm-actions',
       switching ? h('button.btn.ghost.sm',{type:'button',onclick:()=>dlg.close()},t('ruleDialog.cancel')) : null,

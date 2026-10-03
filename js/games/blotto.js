@@ -436,7 +436,7 @@ export default {
         h('div.bl-plan-grid', {role:'group', 'aria-label':L('plan', {n:history.length+1})},
           ALLOC_IDS.map((id,i) => {
             const values = parseAlloc(id), selected = values.join() === alloc.join();
-            return h('button.btn.ghost.bl-plan', {
+            return h('button.btn.ghost.bl-preset.bl-plan', {
               type:'button', 'data-focus':`plan-${id}`, 'data-allocation':id,
               'aria-pressed':String(selected),
               'aria-label':values.map((n,k)=>`${fieldName(k)} ${n}`).join(', '),

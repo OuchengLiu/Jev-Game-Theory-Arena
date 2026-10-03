@@ -19,7 +19,10 @@ globalThis.fetch=async(url,init={})=>{
   try{const req=buildJevRequest(data.game,data.payload,data.mode,data.variant);requests.push(data);return Response.json({model:'typesafe/jev',answers:Object.fromEntries(Object.entries(req.questions).map(([k,q])=>[k,q.type==='noul'?{type:'noul',noul:.5}:{type:'choice',choice:Object.keys(q.criteria)[0],probabilities:Object.fromEntries(Object.keys(q.criteria).map((x,i,ks)=>[x,i===0?1:0]))}]))});}catch(e){console.error('Invalid request',data.game,data.variant,data.payload.street,data.payload.hand);errors.push(e);return Response.json({error:'bad_request'},{status:400});}
  }
  if(path==='/log'){try{checkBatch(data);logs.push(data);}catch(e){errors.push(e);}return Response.json({ok:true});}
- if(path==='/stats')return Response.json({enabled:true,cols:[],rows:[],matches:[],modern:[],updated:new Date().toISOString()});
+ if(path==='/stats')return Response.json({enabled:true,cols:[],rows:[],
+  models:{jev:{available:true,label:'Jev'}},
+  matches:['standard','generalization'].map((variant,i)=>({game:'pd',opponent:'jev',mode:'raw',variant,policy:'greedy',assignment_source:'adaptive',mixed:0,n:i?7:2,human_wins:1,draws:0,human_score:2,opponent_score:3})),
+  modern:['standard','generalization'].map(variant=>({game:'pd',game_ver:'2.0',opponent:'jev',variant,policy:'greedy',assignment_source:'adaptive',kind:'move',actor:'human',mode:'raw',phase:'r1',act:'C',detail:'',n:3})),updated:new Date().toISOString()});
  return Response.json({version:'2.0.0'});
 };
 const nativeTimeout=globalThis.setTimeout;
@@ -60,6 +63,14 @@ assert.equal(document.querySelectorAll('.bl-field').length,variant==='generaliza
 location.hash='#/';await wait(60);location.hash='#/play/blotto';await wait(100);
 assert.equal(document.querySelectorAll('.bl-field').length,variant==='generalization'?3:4);
 location.hash='#/insights';await wait(100);assert.ok(document.querySelector('.ins-comparison'));assert.ok(!document.body.textContent.includes('pd.title'));
+assert.equal(document.querySelectorAll('.ins-comparison .ins-game').length,7,'Six original game sections plus assignment chart');
+assert.equal(document.querySelector('.ins-comparison .stats .stat b').textContent,'2');
+assert.ok(document.querySelector('.ins-comparison .viz-svg'),'Original SVG charts restored');
+const tableToggle=document.querySelector('.ins-comparison .viz-toggle');tableToggle.click();
+assert.ok(document.querySelector('.ins-comparison .viz-table'));tableToggle.click();
+[...document.querySelectorAll('.ins-comparison .ins-filter button')].find(b=>b.textContent==='Rule variant').click();
+assert.equal(document.querySelector('.ins-comparison .stats .stat b').textContent,'7','Rule filters must isolate results');
+assert.equal(document.querySelectorAll('.variant-note').length,0);
 if(errors.length)console.error(errors.map(e=>e.stack));
 for(const game of ['pd','rps','ultimatum','blotto','liarsdice','holdem'])assert.ok(requests.some(r=>r.game===game),`No decision exercised for ${game}`);
 assert.ok(logs.some(b=>b.e.some(e=>e.k==='end'&&e.g==='pd')));

@@ -136,7 +136,7 @@ export function insightsPage(footer) {
   const cmpVer = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; };
   const draw = (data) => {
     const cohortControl=segmented([{value:'2',label:lang==='zh'?'新实验 v2':'Experiment v2'},{value:'1',label:lang==='zh'?'历史数据':'Historical data'}],cohort,v=>{cohort=v;draw(data);});
-    if(cohort==='2') {body.replaceChildren(cohortControl,experimentInsights(data,lang));return;}
+    if(cohort==='2') {body.replaceChildren(cohortControl,experimentInsights(data,lang,render));return;}
     const latest = {};
     for (const r of data.rows) if (!latest[r.game] || cmpVer(r.game_ver, latest[r.game]) > 0) latest[r.game] = r.game_ver;
     // practice rows and bot moves carry no meaningful policy; rows without one predate policies ('sample')
@@ -197,7 +197,7 @@ function render(data, lang) {
 
     if (g === 'pd') {
       const xs = Array.from({ length: 10 }, (_, i) => ({ key: `r${i + 1}`, label: String(i + 1) }));
-      charts.push(lineChart({ title: t('ins.pd_chart'), note: t('ins.pd_note'), xs, series: present, labels, minN: 1,
+      charts.push(lineChart({ title: t('ins.pd_chart'), note: data.variant==='generalization' ? (lang==='zh'?'协作博弈中，各回合选择合作的比例。':'Cooperation by round in the coordination game.') : t('ins.pd_note'), xs, series: present, labels, minN: 1,
         value: (x, se) => rate(bySeries(se, (r) => r.phase === x.key && r.act === 'C'), bySeries(se, (r) => r.phase === x.key)) }));
     }
     if (g === 'pd') {
@@ -228,14 +228,14 @@ function render(data, lang) {
       charts.push(groupedBars({ title: t('ins.ug_offer'), note: t('ins.ug_offer_note'), cats, series: prop, labels,
         value: (c, se) => rate(bySeries(se, (r) => r.act === c.key), bySeries(se, (r) => /^o\d+$/.test(r.act))) }));
       const xs = Array.from({ length: 11 }, (_, o) => ({ key: String(o), label: String(o) }));
-      charts.push(lineChart({ title: t('ins.ug_accept'), note: t('ins.ug_accept_note'), xs, series: present, labels, minN: 1,
+      charts.push(lineChart({ title: t('ins.ug_accept'), note: data.variant==='generalization' ? (lang==='zh'?'拒绝可得2枚金币；比较不同出价下的接受率。':'Rejection earns 2 coins; compare acceptance across offers.') : t('ins.ug_accept_note'), xs, series: present, labels, minN: 1,
         value: (x, se) => rate(bySeries(se, (r) => r.act === 'accept' && r.detail === x.key), bySeries(se, (r) => (r.act === 'accept' || r.act === 'reject') && r.detail === x.key)) }));
     }
     if (g === 'blotto') {
       const totals = {};
       gr.filter((r) => seriesOf(r)).forEach((r) => { totals[r.act] = (totals[r.act] || 0) + r.n; });
       const cats = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k]) => ({ key: k, label: k.replace(/-/g, '·') }));
-      charts.push(groupedBars({ title: t('ins.bl_chart'), note: t('ins.bl_note'), cats, series: present, labels,
+      charts.push(groupedBars({ title: t('ins.bl_chart'), note: data.variant==='generalization' ? (lang==='zh'?'数字依次对应平原、隘口、要塞、港口，保留地域顺序。':'Numbers follow Plain, Pass, Fort, Port; territory order is preserved.') : t('ins.bl_note'), cats, series: present, labels,
         value: (c, se) => rate(bySeries(se, (r) => r.act === c.key), bySeries(se, (r) => r.kind === 'move')) }));
     }
     if (g === 'liarsdice') {
