@@ -42,7 +42,16 @@ for(const game of ['pd','rps','ultimatum','blotto','liarsdice','holdem']){
  if(game==='pd')for(let i=0;i<10;i++){board.querySelector('.pd-move')?.click();await wait(35);}
  if(game==='rps')for(let i=0;i<20;i++){board.querySelector('button.rps-throw')?.click();await wait(35);}
  if(game==='ultimatum'){board.querySelector('.ug-offer')?.click();await wait(100);}
- if(game==='blotto'){assert.equal(board.querySelectorAll('.bl-plan').length,variant==='standard'?16:32);assert.equal(board.querySelectorAll('.bl-step').length,0);board.querySelector('[data-focus="balanced"]')?.click();assert.equal(board.querySelectorAll('.bl-plan[aria-pressed="true"]').length,1);board.querySelector('.bl-deploy')?.click();await wait(100);}
+ if(game==='blotto'){
+  assert.equal(board.querySelectorAll('.bl-plan').length,0);
+  assert.equal(board.querySelectorAll('.bl-step').length,variant==='standard'?6:8);
+  if(variant==='generalization')for(const name of ['plain','pass','port'])assert.ok(board.querySelector(`[data-terrain="${name}"]`));
+  // Human can freely design an extreme allocation.
+  for(let i=0;i<10;i++)board.querySelector('[data-focus="plus-0"]').click();
+  assert.equal(board.querySelector('.bl-num').textContent,'10');
+  assert.equal(board.querySelector('.bl-deploy').disabled,false);
+  board.querySelector('.bl-deploy').click();await wait(100);
+ }
  if(game==='liarsdice'){await wait(200);[...board.querySelectorAll('button')].find(b=>b.textContent.startsWith('Bid ')&&!b.disabled)?.click();await wait(200);[...board.querySelectorAll('button')].find(b=>b.textContent==='Liar!'&&!b.disabled)?.click();await wait(200);}
  if(game==='holdem'){[...board.querySelectorAll('button')].find(b=>b.textContent.startsWith('Call'))?.click();await wait(200);}
  

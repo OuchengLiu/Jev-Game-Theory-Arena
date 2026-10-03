@@ -14,7 +14,7 @@ npm.cmd run verify:api
 npm.cmd run verify:ui
 ```
 
-The API check makes up to 24 real decisions: six games × two rulesets × two analysis modes. It validates every required answer and complete legal-action probability distribution, including 16 standard and 32 generalization Blotto plans (10 soldiers; identical menus for humans and models). Results are saved to `.verification/api-report.json`. Authentication, billing or rate-limit failures stop early. Other failures remain visible; there is no offline-bot fallback in this check.
+The API check makes up to 24 real decisions: six games × two rulesets × two analysis modes. It validates every required answer and complete legal-action probability distribution, including 66 standard and 255 generalization Blotto model options (humans may use all 66 / 286 allocations). Results are saved to `.verification/api-report.json`. Authentication, billing or rate-limit failures stop early. Other failures remain visible; there is no offline-bot fallback in this check.
 
 Open http://localhost:8000 for manual full-game checks. The local server substitutes only the served frontend configuration and CSP; committed production configuration stays unchanged. Keep both terminals open. Confirm rule dialogs, play complete games in both variants, and check the data page. Watch for offline/practice indicators: a playable game alone does not prove Jev responded. All local UI telemetry goes to the local Worker.
 

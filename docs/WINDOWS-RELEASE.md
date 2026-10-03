@@ -23,7 +23,7 @@ npm.cmd run verify:api -- --game=blotto
 npm.cmd run verify:ui
 ```
 
-应显示 `4/4 passed`。打开 http://localhost:8000，检查常规16、泛化32个按钮，两边10名士兵；选择后地图预览更新，出兵后再揭示模型选择。分别完成一局，确认实际走Jev、没有练习模式提示，且数据页正常。API检查只验证初始局面，不能代替完整对局。必要时运行 `npm.cmd run verify:api` 复测全部24组。
+应显示 `4/4 passed`。打开 http://localhost:8000，检查常规3个、泛化4个地域，两边10名士兵；可自由增减兵力，分满10人后出兵，出兵后再揭示模型选择。分别完成一局，确认实际走Jev、没有练习模式提示，且数据页正常。API检查只验证初始局面，不能代替完整对局。必要时运行 `npm.cmd run verify:api` 复测全部24组。
 
 这一步消耗真实Workers AI额度，但D1和Durable Objects均为本地状态。不要把本地测试数据上传到正式数据库。若之前已完成旧布洛托测试局，可退出两个本地服务、将 `.verification/state` 重命名另存，然后重新执行 `verify:db` 初始化干净的本地数据库。
 
@@ -58,7 +58,7 @@ npx.cmd wrangler pages deploy dist --project-name jev-game-theory-arena --branch
 
 ## 4. 上线验收
 
-打开正式网址并强制刷新（Ctrl+Shift+R），确认新版本说明、16/32菜单及切换弹窗。另开窗口运行：
+打开正式网址并强制刷新（Ctrl+Shift+R），确认新版本说明、自由分兵和66/255模型选项及切换弹窗。另开窗口运行：
 
 ```powershell
 npx.cmd wrangler tail --config worker/wrangler.toml

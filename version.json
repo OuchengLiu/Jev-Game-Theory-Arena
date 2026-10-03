@@ -6,13 +6,13 @@
       "Six rule variants, fair action selection and dynamically balanced assignments.",
       "Experiment v2 statistics are separate from historical games.",
       "Standard and variant rules share one screen, with a rule comparison before switching.",
-      "Blotto uses shared fixed menus: 16 standard plans and 32 variant plans."
+      "Blotto restores free allocation: 66 standard options, with 255 history-selected model candidates in the four-field variant."
     ],
     "zh": [
       "六种泛化规则、公平出招与动态均衡分配。",
       "新实验数据独立统计，历史数据保留。",
       "常规与泛化共用同一界面，切换时弹窗对比规则。",
-      "布洛托常规16、泛化32个固定方案，玩家和模型使用相同菜单。"
+      "布洛托恢复自由分兵：常规人机均66种，四地域泛化模型保留255个历史估算候选。"
     ]
   }
 }

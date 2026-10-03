@@ -26,7 +26,7 @@ registerStrings('ruleDialog', {
 const STANDARD = {
   pd: {zh:'双方合作各得3分；单方背叛时，背叛者得5分、合作者得0分；双方背叛各得1分。',en:'Mutual cooperation: 3 each. One defects: defector 5, cooperator 0. Mutual defection: 1 each.'},
   rps: {zh:'石头胜剪刀，剪刀胜布，布胜石头；同招平局。',en:'Rock beats scissors, scissors beats paper, paper beats rock. Same throws draw.'},
-  blotto: {zh:'双方各10名士兵，从相同的16个固定方案中选择，分到3个战场；每处兵力多者获胜。赢得战场更多的一方赢本轮。',en:'Choose from the same 16 fixed plans to split 10 soldiers across 3 battlefields. More troops wins a field; winning more fields wins the round.'},
+  blotto: {zh:'双方自由把10名士兵分到3个战场，共66种方案；每处兵力多者获胜。赢得战场更多的一方赢本轮。',en:'Both players freely split 10 soldiers across 3 battlefields (66 allocations). More troops wins a field; winning more fields wins the round.'},
   ultimatum: {zh:'分配10枚金币；接受则按提议分配，拒绝则双方都得0枚。',en:'Split 10 coins. Accept the proposed split, or reject so both receive 0.'},
   liarsdice: {zh:'1点是万能点，叫点可选2至6；开盅时1点也计入被叫点数。',en:'Ones are wild. Bid on faces 2 through 6; ones also count toward the named face.'},
   holdem: {zh:'从2张底牌与5张公共牌中自由选出最好的5张，可用0、1或2张底牌。',en:'Choose the best five of two hole cards and five community cards, using zero, one or both hole cards.'},

@@ -1,3 +1,4 @@
+import { blottoAnalysis } from '../../shared/games/blotto-analysis.js';
 import { createBlottoRules } from '../../shared/games/blotto.js';
 
 // Each ruleset has its own closure: no mutable cross-request rule state.
@@ -99,16 +100,9 @@ function tendencies(oppSplits) {
   return out.slice(0, 6);
 }
 
-/** Up to 16 candidates: the 10 best by estimate plus the best split of other shapes. */
+/** Highest estimated candidates, returned in neutral enumeration order. */
 function shortlist(scores) {
-  const order = scores.map((s, i) => [s, i]).sort((a, b) => b[0] - a[0]).map(([, i]) => i);
-  const pick = order.slice(0, 10);
-  const seen = new Set(pick.map((i) => SHAPES[i]));
-  for (const i of order) {
-    if (pick.length >= MAX_CANDIDATES) break;
-    if (!seen.has(SHAPES[i])) { seen.add(SHAPES[i]); pick.push(i); }
-  }
-  return pick.sort((a, b) => a - b); // neutral (id) order, so list position says nothing
+  return scores.map((s,i)=>({s,i})).sort((a,b)=>b.s-a.s||a.i-b.i).slice(0,MAX_CANDIDATES).map(x=>x.i).sort((a,b)=>a-b);
 }
 
 const oppSplitsOf = (history) => history.map((r) => r.opp);
@@ -116,9 +110,7 @@ const oppSplitsOf = (history) => history.map((r) => r.opp);
 /** Everything the UI sends to Jev for one round. history: [{jev, opp}] as arrays. */
 function makePayloads(history, total = ROUNDS) {
   const opp = oppSplitsOf(history);
-  const model = opponentModel(opp);
-  const scores = evaluate(model);
-  const picks = ALLOCS.map((_,i)=>i);
+  const {model,scores,picks}=blottoAnalysis(ALLOCS,roundResult,opp,generalized);
   const wire = history.map((r) => ({ jev: allocId(r.jev), opp: allocId(r.opp) }));
   const round = history.length + 1;
   const raw = { round, total, history: wire };

@@ -159,7 +159,7 @@
 .bl-emblem svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .bl-e-fill { fill: color-mix(in srgb, var(--bl-paper-1) 80%, #fff); }
 .bl-e-line { fill: none; stroke: var(--bl-ink); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
-polygon.bl-e-line { fill: color-mix(in srgb, var(--bl-paper-1) 85%, #fff); }
+polygon.bl-e-line, path.bl-e-fill.bl-e-line { fill: color-mix(in srgb, var(--bl-paper-1) 85%, #fff); }
 .bl-e-hatch { fill: none; stroke: var(--bl-ink-2); stroke-width: 1; stroke-linecap: round; }
 .bl-e-soft { fill: none; stroke: var(--bl-ink-soft); stroke-width: 1; }
 .bl-e-flag { fill: var(--gold); stroke: var(--bl-ink); stroke-width: 1; stroke-linejoin: round; }
@@ -344,11 +344,3 @@ polygon.bl-e-line { fill: color-mix(in srgb, var(--bl-paper-1) 85%, #fff); }
 .bl-four .bl-fields { grid-template-columns: repeat(4, minmax(0,1fr)); }
 .bl-four .bl-site small {display:block;text-align:center;font-size:11px;}
 @media(max-width:700px) {.bl-four .bl-fields {grid-template-columns:repeat(2,minmax(0,1fr));}}
-
-/* Shared, fixed action menu: the battlefield map remains the selection preview. */
-.bl-plan-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; width:100%; }
-.bl-plan { display:flex; gap:8px; align-items:center; justify-content:center; padding:10px 6px; border-radius:var(--radius-sm); }
-.bl-plan small { opacity:.5; font-size:.7em; }
-.bl-plan[aria-pressed="true"] { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); }
-.bl-menu-help { margin:0; width:100%; }
-@media(max-width:560px) { .bl-plan-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }

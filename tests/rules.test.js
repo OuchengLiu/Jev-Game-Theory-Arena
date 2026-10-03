@@ -21,16 +21,12 @@ function sameOptions(game,raw,hinted,v) {
 for(const v of variants) {
  test(`${v}: full Blotto action sets, symmetric scoring and no unbeatable allocation`,()=>{
   const c=createBlotto(v),p=c.makePayloads([]);sameOptions('blotto',p.raw,p.hinted,v);
-  assert.equal(p.candidateIds.length,v==='standard'?16:32);
+  assert.equal(p.candidateIds.length,v==='standard'?66:255);
+  assert.equal(c.ALLOCS.length,v==='standard'?66:286);
   for(const a of c.ALLOCS) {assert.equal(a.reduce((s,x)=>s+x,0),c.SOLDIERS);let beaten=false;
    for(const b of c.ALLOCS) {const ab=c.roundResult(a,b),ba=c.roundResult(b,a);assert.equal(ab+ba,0);beaten ||= ab<0;}
    assert.ok(beaten,`${a} must have a counter`);
-   assert.ok(c.ALLOCS.some(b=>c.roundResult(a,b)>0),`${a} must beat an opponent`);
-   for(const b of c.ALLOCS) {
-    const weaklyBetter=c.ALLOCS.every(x=>c.roundResult(b,x)>=c.roundResult(a,x));
-    const strictlyBetter=c.ALLOCS.some(x=>c.roundResult(b,x)>c.roundResult(a,x));
-    assert.ok(!(weaklyBetter&&strictlyBetter),`${a} must not be dominated by ${b}`);
-   }
+
   }
  });
  test(`${v}: RPS chooses its own move, plus independent prediction`,()=>{
@@ -97,12 +93,28 @@ test('oversized choices fail before a paid provider call',async()=>{
  await assert.rejects(()=>runDecision('jev',{AI:{run:async()=>{calls++;}}},{questions:{action:{type:'choice',criteria}}}),/255-option/);
  assert.equal(calls,0);
 });
-test('generalized Blotto keeps all 32 legal actions after completed rounds',()=>{
+test('generalized Blotto keeps 255 history-selected actions after completed rounds',()=>{
  const c=createBlotto('generalization');
  const history=[{jev:c.ALLOCS[0],opp:c.ALLOCS[1]},{jev:c.ALLOCS[2],opp:c.ALLOCS[3]}];
  const p=c.makePayloads(history);
  const request=sameOptions('blotto',p.raw,p.hinted,'generalization');
- assert.equal(Object.keys(request.questions.action.criteria).length,32);
+ assert.equal(Object.keys(request.questions.action.criteria).length,255);
  assert.ok(c.PRIOR.every(Number.isFinite));
  assert.ok(Math.abs(c.PRIOR.reduce((a,b)=>a+b,0)-1)<1e-10);
+});
+
+test('Blotto removes only the lowest estimated options and keeps mode parity',()=>{
+ for(const variant of variants) {
+  const c=createBlotto(variant);
+  for(const history of [[],[{jev:c.ALLOCS[0],opp:c.ALLOCS.at(-1)}]]) {
+   const p=c.makePayloads(history);
+   sameOptions('blotto',p.raw,p.hinted,variant);
+   const chosen=p.candidateIds.map(id=>c.indexOf(c.parseAlloc(id)));
+   const excluded=p.scores.filter((_,i)=>!chosen.includes(i));
+   assert.equal(excluded.length,variant==='standard'?0:31);
+   if(excluded.length)assert.ok(Math.min(...chosen.map(i=>p.scores[i]))>=Math.max(...excluded));
+   const changed=structuredClone(p.hinted);changed.candidates.reverse();
+   assert.throws(()=>buildJevRequest('blotto',changed,'hinted',variant),/neutral order/);
+  }
+ }
 });
